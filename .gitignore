@@ -1,0 +1,23 @@
+# Secrets & local config
+.env
+*.env.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.venv/
+env/
+venv/
+
+# Logs & temp files
+*.log
+/tmp/
+/scratch/
+.system_generated/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
