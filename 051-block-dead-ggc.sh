@@ -25,7 +25,9 @@
 # 128.75.236.0/24 - YarNet / Corbina GGC 2 (Калуга)
 # 89.113.123.0/24 - Beeline / Corbina GGC (Калуга)
 # 188.43.61.0/24 - TTK / GVS (Калуга)
-DEAD_GGC="128.75.235.0/24 128.75.236.0/24 89.113.123.0/24 188.43.61.0/24"
+# 85.249.245.0/24 - Beeline / Corbina GGC (Москва/Калуга)
+DEAD_GGC="128.75.235.0/24 128.75.236.0/24 89.113.123.0/24 188.43.61.0/24 85.249.245.0/24"
+
 
 for subnet in $DEAD_GGC; do
     iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || \
