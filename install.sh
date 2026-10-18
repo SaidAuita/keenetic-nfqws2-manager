@@ -46,9 +46,9 @@ if [ -f "$DIR/nfqws-menu/strategies/nfqws2/beeline_kaluga.conf" ]; then
 elif [ -f "$DIR/strategies/beeline_kaluga.conf" ]; then
     cp "$DIR/strategies/beeline_kaluga.conf" /opt/etc/nfqws-menu/strategies/nfqws2/
 fi
-if [ -f "$DIR/strategies/dune_yarnet.conf" ]; then
-    cp "$DIR/strategies/dune_yarnet.conf" /opt/etc/nfqws-menu/strategies/nfqws2/
-fi
+# Очистка устаревшего дубликата dune_yarnet.conf если остался
+rm -f /opt/etc/nfqws-menu/strategies/nfqws2/dune_yarnet.conf
+
 
 
 # 4. Установка скрипта сброса мертвых серверов GGC

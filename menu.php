@@ -1141,7 +1141,6 @@ $strategyDates = [
     'zemidala_rostelecom.conf' => '2026-10-15',
     'zemidala_sniext.conf' => '2026-10-12',
     'beeline_kaluga.conf' => '2026-10-18',
-    'dune_yarnet.conf' => '2026-10-18',
     'hardcorp74.conf' => '2026-10-12',
     'alt13.conf' => '2026-10-04',
     'alt11.conf' => '2026-10-04',
@@ -1199,15 +1198,6 @@ $knownStrategies = [
         'category' => 'recommended'
     ],
     'beeline_kaluga.conf' => [
-        'name' => 'DUNE HD & BEELINE (Калуга)',
-        'badge' => '⭐ Оптимизировано под ТВ и Beeline',
-        'badge_cls' => 'badge-fire',
-        'prio' => 0,
-        'tv' => true,
-        'desc' => 'Специальная конфигурация под приставки Smart TV / Dune HD и провайдера Beeline / YarNet (Калуга): hostfakesplit под YouTube (100% совместимо с TLS 1.2 Dune HD без ломающих TLS 1.3 шаблонов) + база ALT11 для Discord/сайтов + полный охват портов 1024-65534.',
-        'category' => 'recommended'
-    ],
-    'dune_yarnet.conf' => [
         'name' => 'DUNE HD & BEELINE (Калуга)',
         'badge' => '⭐ Оптимизировано под ТВ и Beeline',
         'badge_cls' => 'badge-fire',
@@ -1349,6 +1339,9 @@ $allFiles = glob(STRATEGIES_DIR . '/*.conf');
 $strategies = [];
 foreach ($allFiles as $f) {
     $base = basename($f);
+    if ($base === 'dune_yarnet.conf') {
+        continue; // Legacy alias of beeline_kaluga.conf, ignore to prevent duplicate card
+    }
     $stratDate = $strategyDates[$base] ?? '2026-10-04';
     $isFresh = ($stratDate >= '2026-10-10');
 
@@ -2319,7 +2312,7 @@ if (file_exists(CONF_FILE)) {
                             ($meta['name'] === 'ALT4' && stripos($activeStrategyName, 'ALT4') !== false) ||
                             ($meta['name'] === 'ALT11' && stripos($activeStrategyName, 'ALT11') !== false) ||
                             ($meta['name'] === 'HARDCORP74' && stripos($activeStrategyName, 'hardcorp74') !== false) ||
-                            (($file === 'beeline_kaluga.conf' || $file === 'dune_yarnet.conf') && (stripos($activeStrategyName, 'BEELINE_KALUGA') !== false || stripos($activeStrategyName, 'DUNE_YARNET') !== false));
+                            ($file === 'beeline_kaluga.conf' && (stripos($activeStrategyName, 'BEELINE_KALUGA') !== false || stripos($activeStrategyName, 'DUNE_YARNET') !== false));
 
             ?>
             <div class="strat-card <?= $isActive ? 'active-strat' : '' ?>" 

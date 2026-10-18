@@ -27,7 +27,7 @@
   * Тест рукопожатия **TLS 1.2** (ТВ-приставки Dune HD, Smart TV, Android 7–9).
   * Проверка доступности картинок превью YouTube (`i.ytimg.com`).
   * Проверка шлюза Discord Web.
-* **Готовая оптимизированная стратегия для Smart TV и региональных провайдеров (`beeline_kaluga.conf` / `dune_yarnet.conf`):**
+* **Готовая оптимизированная стратегия для Smart TV и региональных провайдеров (`beeline_kaluga.conf`):**
   * Построена на базе `hostfakesplit` без жестких бинарных шаблонов TLS 1.3, благодаря чему стабильно работает как на старых ТВ-боксах с TLS 1.2, так и на ПК с TLS 1.3.
 
 * **Скрипт сброса мертвых серверов Google Global Cache (`051-block-dead-ggc.sh`):**
@@ -126,8 +126,7 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/SaidAuita/keenetic-nfqws2-
 ├── install.sh                # Установщик в 1 клик для Keenetic Entware
 ├── 051-block-dead-ggc.sh     # Скрипт netfilter для сброса зависших серверов GGC
 ├── strategies/
-│   ├── beeline_kaluga.conf   # Оптимизированная стратегия для Smart TV (TLS 1.2) и Beeline/провайдеров
-│   └── dune_yarnet.conf      # Алиас конфигурации
+│   └── beeline_kaluga.conf   # Оптимизированная стратегия для Smart TV (TLS 1.2) и Beeline/провайдеров
 └── images/
 
     ├── sm_gui.png            # Скриншот основного веб-интерфейса
