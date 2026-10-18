@@ -16,7 +16,12 @@ inspect_*.py
 monitor_*.py
 fetch_*.py
 diag_*.py
+diagnose_*.py
 apply_*.py
+scan_*.py
+fix_*.py
+add_*.py
+build_*.py
 verify_clean.py
 clean_repo_files.py
 ssh_cmd.py
