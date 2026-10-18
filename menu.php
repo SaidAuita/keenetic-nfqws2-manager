@@ -16,7 +16,906 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json; charset=utf-8');
     $action = $_POST['action'];
 
-if ($action === 'get_status') {
+// --- GGC / FREEZE KILLER HANDLERS ---
+    if ($action === 'get_blocked_ggc') {
+        $blocked = [];
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $c = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $c, $m)) {
+                $blocked = array_values(array_filter(explode(' ', trim($m[1]))));
+            }
+        }
+        exec("iptables -L FORWARD -n -v | grep 'reject-with tcp-reset'", $lines);
+        $iptablesBlocked = [];
+        foreach ($lines as $l) {
+            if (preg_match('/0\.0\.0\.0\/0\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?:\/[0-9]+)?)/', $l, $m)) {
+                if ($m[1] !== '0.0.0.0/0') {
+                    $iptablesBlocked[] = $m[1];
+                }
+            }
+        }
+        $all = array_values(array_unique(array_merge($blocked, $iptablesBlocked)));
+        echo json_encode(['success' => true, 'subnets' => $all]);
+        exit;
+    }
+
+    if ($action === 'block_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        if (preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/', $subnet)) {
+            $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $subnet);
+        }
+        if (!preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/[0-9]+$/', $subnet)) {
+            echo json_encode(['success' => false, 'error' => 'Неверный формат подсети (ожидается X.X.X.0/24)']);
+            exit;
+        }
+
+        exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = explode(' ', trim($m[1]));
+                if (!in_array($subnet, $cur)) {
+                    $cur[] = $subnet;
+                    $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                    file_put_contents($file, $newC);
+                }
+            } else {
+                $content .= "\nDEAD_GGC=\"$subnet\"\n";
+                file_put_contents($file, $content);
+            }
+        }
+
+        exec("conntrack -D -d $subnet 2>/dev/null");
+        if (isset($_SERVER["REMOTE_ADDR"])) { exec("conntrack -D -s " . escapeshellarg($_SERVER["REMOTE_ADDR"]) . " 2>/dev/null"); }
+        if (isset($_SERVER['REMOTE_ADDR'])) {
+            exec("conntrack -D -s " . escapeshellarg($_SERVER['REMOTE_ADDR']) . " 2>/dev/null");
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'unblock_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        exec("while iptables -D FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null; do :; done");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = array_diff(explode(' ', trim($m[1])), [$subnet]);
+                $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                file_put_contents($file, $newC);
+            }
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'test_single_ip') {
+        $target = trim($_POST['target'] ?? '');
+        $cleanTarget = preg_replace('/^https?:\/\//', '', $target);
+        $cleanTarget = preg_replace('/\/.*$/', '', $cleanTarget);
+        $cleanTarget = preg_replace('/\/[0-9]+$/', '', $cleanTarget);
+        
+        $ip = $cleanTarget;
+        $resolvedHost = '';
+        if (!preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/', $ip)) {
+            $resolved = @gethostbyname($cleanTarget);
+            if ($resolved && $resolved !== $cleanTarget) {
+                $resolvedHost = $cleanTarget;
+                $ip = $resolved;
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Не удалось распознать IP или домен: ' . htmlspecialchars($cleanTarget)]);
+                exit;
+            }
+        }
+
+        if (preg_match('/\.0$/', $ip)) {
+            $testIp = preg_replace('/\.0$/', '.2', $ip);
+        } else {
+            $testIp = $ip;
+        }
+
+        $t0 = microtime(true);
+        $cOut = [];
+        exec("curl -s -k -I -m 1 --connect-timeout 1 'https://$testIp' 2>&1 | head -n 3", $cOut);
+        $elapsed = round((microtime(true) - $t0) * 1000);
+        $headerLine = trim($cOut[0] ?? '');
+        $serverLine = '';
+        foreach ($cOut as $cl) {
+            if (stripos($cl, 'server:') !== false) $serverLine = trim($cl);
+        }
+
+        $isDead = (empty($headerLine) || stripos($headerLine, 'timed out') !== false || stripos($headerLine, 'refused') !== false);
+        $suggestedSubnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+
+        $bOut = [];
+        exec("iptables -C FORWARD -d $suggestedSubnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null && echo 1 || echo 0", $bOut);
+        $isBlocked = ($bOut[0] ?? '0') === '1';
+
+        echo json_encode([
+            'success' => true,
+            'ip' => $ip,
+            'test_ip' => $testIp,
+            'resolved_host' => $resolvedHost,
+            'suggested_subnet' => $suggestedSubnet,
+            'latency_ms' => $elapsed,
+            'dead' => $isDead,
+            'blocked' => $isBlocked,
+            'header' => $headerLine ?: 'Нет ответа (таймаут соединения)',
+            'server' => $serverLine
+        ]);
+        exit;
+    }
+
+    if ($action === 'scan_and_unfreeze') {
+        $targetDevice = $_POST['target_device'] ?? 'dune_kuh';
+        $autoBlock = ($_POST['auto_block'] ?? '1') === '1';
+        $data = @file_get_contents('/proc/net/nf_conntrack');
+        $lines = explode("
+", (string)$data);
+        
+        $ips = [];
+        $clientIpsToFlush = [];
+
+        foreach ($lines as $line) {
+            if (strpos($line, 'dport=443') === false && strpos($line, 'dport=80') === false) continue;
+            
+            if ($targetDevice === 'dune_kuh') {
+                if (strpos($line, 'src=192.168.1.100') === false) continue;
+                $clientIpsToFlush['192.168.1.100'] = true;
+            } elseif ($targetDevice === 'dune_komnata') {
+                if (strpos($line, 'src=192.168.1.101') === false) continue;
+                $clientIpsToFlush['192.168.1.101'] = true;
+            } elseif ($targetDevice === 'current') {
+                $cur = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+                if (strpos($line, 'src=' . $cur) === false) continue;
+                $clientIpsToFlush[$cur] = true;
+            } else {
+                if (!preg_match('/src=(192\.168\.\d+\.\d+)/', $line, $srcM)) continue;
+                $clientIpsToFlush[$srcM[1]] = true;
+            }
+
+            if (preg_match('/src=192\.168\.\d+\.\d+\s+dst=([0-9.]+)/', $line, $dstM)) {
+                $dst = $dstM[1];
+                if (!preg_match('/^(192\.168|100\.64|127\.0|10\.|172\.(1[6-9]|2[0-9]|3[0-1])|224\.|239\.|255\.)/', $dst)) {
+                    $ips[$dst] = true;
+                }
+            }
+        }
+
+        $candidateIps = array_keys($ips);
+        $candidateIps = array_slice($candidateIps, 0, 8);
+
+        $results = [];
+        $newlyBlocked = [];
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+
+        foreach ($candidateIps as $ip) {
+            $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+            $bOut = [];
+            exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null && echo 1 || echo 0", $bOut);
+            $isBlocked = ($bOut[0] ?? '0') === '1';
+
+            $t0 = microtime(true);
+            $cOut = [];
+            exec("curl -s -k -I -m 1 --connect-timeout 1 'https://$ip' 2>&1 | head -n 1", $cOut);
+            $elapsed = round((microtime(true) - $t0) * 1000);
+            $info = trim($cOut[0] ?? '');
+
+            $isDead = (empty($info) || stripos($info, 'timed out') !== false || stripos($info, 'refused') !== false);
+
+            $isDune = in_array($targetDevice, ['dune_kuh', 'dune_komnata']);
+            $isKnownSafe = preg_match('/^(142\.25[01]|172\.(217|253)|216\.58|74\.125|149\.154|91\.108|162\.159)\./', $ip);
+
+            if ($isDead && !$isBlocked && $autoBlock && $isDune && !$isKnownSafe) {
+                exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+                $newlyBlocked[] = $subnet;
+                $isBlocked = true;
+
+                if (file_exists($file)) {
+                    $content = file_get_contents($file);
+                    if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $mm)) {
+                        $cur = explode(' ', trim($mm[1]));
+                        if (!in_array($subnet, $cur)) {
+                            $cur[] = $subnet;
+                            $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                            file_put_contents($file, $newC);
+                        }
+                    }
+                }
+            }
+
+            $results[] = [
+                'ip' => $ip,
+                'subnet' => $subnet,
+                'latency_ms' => $elapsed,
+                'dead' => $isDead,
+                'blocked' => $isBlocked,
+                'info' => $info ?: 'Нет ответа (таймаут)'
+            ];
+        }
+
+        foreach (array_keys($clientIpsToFlush) as $cIp) {
+            exec("conntrack -D -s " . escapeshellarg($cIp) . " 2>/dev/null");
+        }
+        if (isset($_SERVER["REMOTE_ADDR"])) { exec("conntrack -D -s " . escapeshellarg($_SERVER["REMOTE_ADDR"]) . " 2>/dev/null"); }
+
+        $msg = '';
+        if (count($newlyBlocked) > 0) {
+            $msg = '🚨 Найден и заблокирован зависший сервер: ' . implode(', ', $newlyBlocked) . '! Сокеты сброшены, видео возобновлено.';
+        } elseif (count($results) > 0) {
+            $msg = '✅ Проверено ' . count($results) . ' активных узлов. Зависшие сокеты сброшены — видео должно ожить!';
+        } else {
+            $msg = '⚡ Активных сокетов не найдено. Выполнен полный сброс кэша соединений приставки!';
+        }
+
+        echo json_encode([
+            'success' => true,
+            'scanned_count' => count($results),
+            'results' => $results,
+            'newly_blocked' => $newlyBlocked,
+            'message' => $msg
+        ]);
+        exit;
+    }
+
+    if ($action === 'block_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        if (preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/', $subnet)) {
+            $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $subnet);
+        }
+        if (!preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/[0-9]+$/', $subnet)) {
+            echo json_encode(['success' => false, 'error' => 'Неверный формат подсети (ожидается X.X.X.0/24)']);
+            exit;
+        }
+
+        exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = explode(' ', trim($m[1]));
+                if (!in_array($subnet, $cur)) {
+                    $cur[] = $subnet;
+                    $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                    file_put_contents($file, $newC);
+                }
+            } else {
+                $content .= "\nDEAD_GGC=\"$subnet\"\n";
+                file_put_contents($file, $content);
+            }
+        }
+
+        exec("conntrack -D -d $subnet 2>/dev/null");
+        if (isset($_SERVER["REMOTE_ADDR"])) { exec("conntrack -D -s " . escapeshellarg($_SERVER["REMOTE_ADDR"]) . " 2>/dev/null"); }
+        if (isset($_SERVER['REMOTE_ADDR'])) {
+            exec("conntrack -D -s " . escapeshellarg($_SERVER['REMOTE_ADDR']) . " 2>/dev/null");
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'unblock_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        exec("while iptables -D FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null; do :; done");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = array_diff(explode(' ', trim($m[1])), [$subnet]);
+                $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                file_put_contents($file, $newC);
+            }
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'test_single_ip') {
+        $target = trim($_POST['target'] ?? '');
+        $ip = preg_replace('/\/[0-9]+$/', '', $target);
+        if (preg_match('/\.0$/', $ip)) {
+            $testIp = preg_replace('/\.0$/', '.2', $ip);
+        } else {
+            $testIp = $ip;
+        }
+
+        $t0 = microtime(true);
+        exec("curl -s -k -I -m 1 --connect-timeout 1 'https://$testIp' 2>&1 | head -n 3", $cOut);
+        $elapsed = round((microtime(true) - $t0) * 1000);
+        $headerLine = trim($cOut[0] ?? '');
+        $serverLine = '';
+        foreach ($cOut as $cl) {
+            if (stripos($cl, 'server:') !== false) $serverLine = trim($cl);
+        }
+
+        $isDead = (empty($headerLine) || stripos($headerLine, 'timed out') !== false || stripos($headerLine, 'refused') !== false);
+        $suggestedSubnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+
+        exec("iptables -C FORWARD -d $suggestedSubnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null && echo 1 || echo 0", $bOut);
+        $isBlocked = ($bOut[0] ?? '0') === '1';
+
+        echo json_encode([
+            'success' => true,
+            'ip' => $ip,
+            'test_ip' => $testIp,
+            'suggested_subnet' => $suggestedSubnet,
+            'latency_ms' => $elapsed,
+            'dead' => $isDead,
+            'blocked' => $isBlocked,
+            'header' => $headerLine ?: 'Нет ответа (таймаут соединения)',
+            'server' => $serverLine
+        ]);
+        exit;
+    }
+
+    if ($action === 'scan_and_unfreeze') {
+        $targetDevice = $_POST['target_device'] ?? 'all';
+        $data = @file_get_contents('/proc/net/nf_conntrack');
+        $lines = explode("\n", (string)$data);
+        
+        $ips = [];
+        $clientIpsToFlush = [];
+
+        foreach ($lines as $line) {
+            if (strpos($line, 'dport=443') === false && strpos($line, 'dport=80') === false) continue;
+            
+            if ($targetDevice === 'dune_kuh') {
+                if (strpos($line, 'src=192.168.1.100') === false) continue;
+                $clientIpsToFlush['192.168.1.100'] = true;
+            } elseif ($targetDevice === 'dune_komnata') {
+                if (strpos($line, 'src=192.168.1.101') === false) continue;
+                $clientIpsToFlush['192.168.1.101'] = true;
+            } elseif ($targetDevice === 'current') {
+                $cur = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+                if (strpos($line, 'src=' . $cur) === false) continue;
+                $clientIpsToFlush[$cur] = true;
+            } else {
+                if (!preg_match('/src=(192\.168\.\d+\.\d+)/', $line, $srcM)) continue;
+                $clientIpsToFlush[$srcM[1]] = true;
+            }
+
+            if (preg_match('/src=192\.168\.\d+\.\d+\s+dst=([0-9.]+)/', $line, $dstM)) {
+                $dst = $dstM[1];
+                if (!preg_match('/^(192\.168|100\.64|127\.0|10\.|172\.(1[6-9]|2[0-9]|3[0-1])|224\.|239\.|255\.)/', $dst)) {
+                    $ips[$dst] = true;
+                }
+            }
+        }
+
+        $candidateIps = array_keys($ips);
+        $candidateIps = array_slice($candidateIps, 0, 8);
+
+        $results = [];
+        $newlyBlocked = [];
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+
+        foreach ($candidateIps as $ip) {
+            $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+            exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null && echo 1 || echo 0", $bOut);
+            $isBlocked = ($bOut[0] ?? '0') === '1';
+
+            $t0 = microtime(true);
+            exec("curl -s -k -I -m 1 --connect-timeout 1 'https://$ip' 2>&1 | head -n 1", $cOut);
+            $elapsed = round((microtime(true) - $t0) * 1000);
+            $info = trim($cOut[0] ?? '');
+
+            $isDead = (empty($info) || stripos($info, 'timed out') !== false || stripos($info, 'refused') !== false);
+
+            $isDune = in_array($targetDevice, ['dune_kuh', 'dune_komnata']);
+            if ($isDead && !$isBlocked && $isDune) {
+                exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+                $newlyBlocked[] = $subnet;
+                $isBlocked = true;
+
+                if (file_exists($file)) {
+                    $content = file_get_contents($file);
+                    if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $mm)) {
+                        $cur = explode(' ', trim($mm[1]));
+                        if (!in_array($subnet, $cur)) {
+                            $cur[] = $subnet;
+                            $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                            file_put_contents($file, $newC);
+                        }
+                    }
+                }
+            }
+
+            $results[] = [
+                'ip' => $ip,
+                'subnet' => $subnet,
+                'latency_ms' => $elapsed,
+                'dead' => $isDead,
+                'blocked' => $isBlocked,
+                'info' => $info ?: 'Нет ответа (таймаут)'
+            ];
+        }
+
+        foreach (array_keys($clientIpsToFlush) as $cIp) {
+            exec("conntrack -D -s " . escapeshellarg($cIp) . " 2>/dev/null");
+        }
+        if (isset($_SERVER["REMOTE_ADDR"])) { exec("conntrack -D -s " . escapeshellarg($_SERVER["REMOTE_ADDR"]) . " 2>/dev/null"); }
+
+        $msg = '';
+        if (count($newlyBlocked) > 0) {
+            $msg = '🚨 Найден и заблокирован зависший сервер: ' . implode(', ', $newlyBlocked) . '! Сокеты сброшены, видео возобновлено.';
+        } elseif (count($results) > 0) {
+            $msg = '✅ Проверено ' . count($results) . ' активных узлов. Зависшие сокеты сброшены — видео должно ожить!';
+        } else {
+            $msg = '⚡ Активных сокетов не найдено. Выполнен полный сброс кэша соединений приставки!';
+        }
+
+        echo json_encode([
+            'success' => true,
+            'scanned_count' => count($results),
+            'results' => $results,
+            'newly_blocked' => $newlyBlocked,
+            'message' => $msg
+        ]);
+        exit;
+    }
+
+    if ($action === 'block_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        if (preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/', $subnet)) {
+            $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $subnet);
+        }
+        if (!preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/[0-9]+$/', $subnet)) {
+            echo json_encode(['success' => false, 'error' => 'Неверный формат подсети (ожидается X.X.X.0/24)']);
+            exit;
+        }
+
+        exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = explode(' ', trim($m[1]));
+                if (!in_array($subnet, $cur)) {
+                    $cur[] = $subnet;
+                    $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                    file_put_contents($file, $newC);
+                }
+            } else {
+                $content .= "\nDEAD_GGC=\"$subnet\"\n";
+                file_put_contents($file, $content);
+            }
+        }
+
+        exec("conntrack -D -d $subnet 2>/dev/null");
+        if (isset($_SERVER["REMOTE_ADDR"])) { exec("conntrack -D -s " . escapeshellarg($_SERVER["REMOTE_ADDR"]) . " 2>/dev/null"); }
+        if (isset($_SERVER['REMOTE_ADDR'])) {
+            exec("conntrack -D -s " . escapeshellarg($_SERVER['REMOTE_ADDR']) . " 2>/dev/null");
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'unblock_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        exec("while iptables -D FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null; do :; done");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = array_diff(explode(' ', trim($m[1])), [$subnet]);
+                $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                file_put_contents($file, $newC);
+            }
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'test_single_ip') {
+        $target = trim($_POST['target'] ?? '');
+        $ip = preg_replace('/\/[0-9]+$/', '', $target);
+        if (preg_match('/\.0$/', $ip)) {
+            $testIp = preg_replace('/\.0$/', '.2', $ip);
+        } else {
+            $testIp = $ip;
+        }
+
+        $t0 = microtime(true);
+        exec("curl -s -k -I -m 1 --connect-timeout 1 'https://$testIp' 2>&1 | head -n 3", $cOut);
+        $elapsed = round((microtime(true) - $t0) * 1000);
+        $headerLine = trim($cOut[0] ?? '');
+        $serverLine = '';
+        foreach ($cOut as $cl) {
+            if (stripos($cl, 'server:') !== false) $serverLine = trim($cl);
+        }
+
+        $isDead = (empty($headerLine) || stripos($headerLine, 'timed out') !== false || stripos($headerLine, 'refused') !== false);
+        $suggestedSubnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+
+        exec("iptables -C FORWARD -d $suggestedSubnet -p tcp --dport 443 -j REJECT 2>/dev/null && echo 1 || echo 0", $bOut);
+        $isBlocked = ($bOut[0] ?? '0') === '1';
+
+        echo json_encode([
+            'success' => true,
+            'ip' => $ip,
+            'test_ip' => $testIp,
+            'suggested_subnet' => $suggestedSubnet,
+            'latency_ms' => $elapsed,
+            'dead' => $isDead,
+            'blocked' => $isBlocked,
+            'header' => $headerLine ?: 'Нет ответа (таймаут соединения)',
+            'server' => $serverLine
+        ]);
+        exit;
+    }
+
+    if ($action === 'scan_and_unfreeze') {
+        $targetDevice = $_POST['target_device'] ?? 'all';
+        $data = @file_get_contents('/proc/net/nf_conntrack');
+        $lines = explode("\n", (string)$data);
+        
+        $ips = [];
+        $clientIpsToFlush = [];
+
+        foreach ($lines as $line) {
+            if (strpos($line, 'dport=443') === false && strpos($line, 'dport=80') === false) continue;
+            
+            if ($targetDevice === 'dune_kuh') {
+                if (strpos($line, 'src=192.168.1.100') === false) continue;
+                $clientIpsToFlush['192.168.1.100'] = true;
+            } elseif ($targetDevice === 'dune_komnata') {
+                if (strpos($line, 'src=192.168.1.101') === false) continue;
+                $clientIpsToFlush['192.168.1.101'] = true;
+            } elseif ($targetDevice === 'current') {
+                $cur = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+                if (strpos($line, 'src=' . $cur) === false) continue;
+                $clientIpsToFlush[$cur] = true;
+            } else {
+                if (!preg_match('/src=(192\.168\.\d+\.\d+)/', $line, $srcM)) continue;
+                $clientIpsToFlush[$srcM[1]] = true;
+            }
+
+            if (preg_match('/src=192\.168\.\d+\.\d+\s+dst=([0-9.]+)/', $line, $dstM)) {
+                $dst = $dstM[1];
+                if (!preg_match('/^(192\.168|100\.64|127\.0|10\.|172\.(1[6-9]|2[0-9]|3[0-1])|224\.|239\.|255\.)/', $dst)) {
+                    $ips[$dst] = true;
+                }
+            }
+        }
+
+        $candidateIps = array_keys($ips);
+        $candidateIps = array_slice($candidateIps, 0, 8);
+
+        $results = [];
+        $newlyBlocked = [];
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+
+        foreach ($candidateIps as $ip) {
+            $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+            exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT 2>/dev/null && echo 1 || echo 0", $bOut);
+            $isBlocked = ($bOut[0] ?? '0') === '1';
+
+            $t0 = microtime(true);
+            exec("curl -s -k -I -m 1 --connect-timeout 1 'https://$ip' 2>&1 | head -n 1", $cOut);
+            $elapsed = round((microtime(true) - $t0) * 1000);
+            $info = trim($cOut[0] ?? '');
+
+            $isDead = (empty($info) || stripos($info, 'timed out') !== false || stripos($info, 'refused') !== false);
+
+            if ($isDead && !$isBlocked) {
+                exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+                $newlyBlocked[] = $subnet;
+                $isBlocked = true;
+
+                if (file_exists($file)) {
+                    $content = file_get_contents($file);
+                    if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $mm)) {
+                        $cur = explode(' ', trim($mm[1]));
+                        if (!in_array($subnet, $cur)) {
+                            $cur[] = $subnet;
+                            $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                            file_put_contents($file, $newC);
+                        }
+                    }
+                }
+            }
+
+            $results[] = [
+                'ip' => $ip,
+                'subnet' => $subnet,
+                'latency_ms' => $elapsed,
+                'dead' => $isDead,
+                'blocked' => $isBlocked,
+                'info' => $info ?: 'Нет ответа (таймаут)'
+            ];
+        }
+
+        foreach (array_keys($clientIpsToFlush) as $cIp) {
+            exec("conntrack -D -s " . escapeshellarg($cIp) . " 2>/dev/null");
+        }
+        if (isset($_SERVER["REMOTE_ADDR"])) { exec("conntrack -D -s " . escapeshellarg($_SERVER["REMOTE_ADDR"]) . " 2>/dev/null"); }
+
+        $msg = '';
+        if (count($newlyBlocked) > 0) {
+            $msg = '🚨 Найден и заблокирован зависший сервер: ' . implode(', ', $newlyBlocked) . '! Сокеты сброшены, видео возобновлено.';
+        } elseif (count($results) > 0) {
+            $msg = '✅ Проверено ' . count($results) . ' активных узлов. Зависшие сокеты сброшены — видео должно ожить!';
+        } else {
+            $msg = '⚡ Активных сокетов не найдено. Выполнен полный сброс кэша соединений приставки!';
+        }
+
+        echo json_encode([
+            'success' => true,
+            'scanned_count' => count($results),
+            'results' => $results,
+            'newly_blocked' => $newlyBlocked,
+            'message' => $msg
+        ]);
+        exit;
+    }
+
+    if ($action === 'block_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        if (!preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?$/', $subnet)) {
+            echo json_encode(['success' => false, 'error' => 'Неверный формат подсети']);
+            exit;
+        }
+        if (strpos($subnet, '/') === false) $subnet .= '/32';
+
+        exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = explode(' ', trim($m[1]));
+                if (!in_array($subnet, $cur)) {
+                    $cur[] = $subnet;
+                    $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                    file_put_contents($file, $newC);
+                }
+            }
+        }
+
+        exec("conntrack -D -d $subnet 2>/dev/null");
+        exec("conntrack -D -s 192.168.1.100 2>/dev/null");
+        exec("conntrack -D -s 192.168.1.101 2>/dev/null");
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'unblock_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        exec("while iptables -D FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null; do :; done");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = array_diff(explode(' ', trim($m[1])), [$subnet]);
+                $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                file_put_contents($file, $newC);
+            }
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'scan_and_unfreeze') {
+        $targetDevice = $_POST['target_device'] ?? 'all';
+        $data = @file_get_contents('/proc/net/nf_conntrack');
+        
+        $srcRegex = 'src=192\.168\.1\.(145|53)';
+        if ($targetDevice === 'dune_komnata') {
+            $srcRegex = 'src=192\.168\.1\.53';
+        } elseif ($targetDevice === 'dune_kuh') {
+            $srcRegex = 'src=192\.168\.1\.145';
+        }
+
+        preg_match_all('/' . $srcRegex . '.*?dst=([0-9.]+).*?dport=443/', $data, $m);
+        $rawIps = array_unique($m[1] ?? []);
+        $ips = [];
+        foreach ($rawIps as $ip) {
+            if (!preg_match('/^(192\.168|100\.64|127\.0|10\.|172\.(1[6-9]|2[0-9]|3[0-1]))/', $ip)) {
+                $ips[] = $ip;
+            }
+        }
+
+        // Limit to max 6 IPs for quick response < 2s
+        $ips = array_slice($ips, 0, 6);
+        $results = [];
+        $newlyBlocked = [];
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+
+        foreach ($ips as $ip) {
+            exec("iptables -C FORWARD -d $ip -p tcp --dport 443 -j REJECT 2>/dev/null && echo 1 || echo 0", $bOut);
+            $isBlocked = ($bOut[0] ?? '0') === '1';
+
+            $t0 = microtime(true);
+            exec("curl -k -I --max-time 0.8 https://$ip 2>&1 | head -n 1", $cOut);
+            $elapsed = round((microtime(true) - $t0) * 1000);
+            $info = $cOut[0] ?? '';
+
+            $isDead = (strpos($info, 'timed out') !== false || strpos($info, 'refused') !== false || empty($info));
+
+            if ($isDead && !$isBlocked) {
+                $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+                exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+                $newlyBlocked[] = $subnet;
+                $isBlocked = true;
+
+                if (file_exists($file)) {
+                    $content = file_get_contents($file);
+                    if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $mm)) {
+                        $cur = explode(' ', trim($mm[1]));
+                        if (!in_array($subnet, $cur)) {
+                            $cur[] = $subnet;
+                            $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                            file_put_contents($file, $newC);
+                        }
+                    }
+                }
+            }
+
+            $results[] = [
+                'ip' => $ip,
+                'latency_ms' => $elapsed,
+                'dead' => $isDead,
+                'blocked' => $isBlocked,
+                'info' => $info ? substr($info, 0, 50) : 'Нет ответа (таймаут)'
+            ];
+        }
+
+        exec("conntrack -D -s 192.168.1.100 2>/dev/null");
+        exec("conntrack -D -s 192.168.1.101 2>/dev/null");
+
+        echo json_encode([
+            'success' => true,
+            'scanned_count' => count($ips),
+            'results' => $results,
+            'newly_blocked' => $newlyBlocked,
+            'message' => count($newlyBlocked) > 0 
+                ? 'Обнаружен и заблокирован зависший узел: ' . implode(', ', $newlyBlocked) . '. Соединения сброшены!' 
+                : (count($ips) > 0 
+                    ? 'Проверено ' . count($ips) . ' узлов приставки. Зависшие сокеты сброшены, видео возобновлено!' 
+                    : 'Сброс сокетов приставки выполнен!')
+        ]);
+        exit;
+    }
+
+    if ($action === 'block_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        if (!preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?$/', $subnet)) {
+            echo json_encode(['success' => false, 'error' => 'Неверный формат подсети']);
+            exit;
+        }
+        if (strpos($subnet, '/') === false) $subnet .= '/32';
+
+        exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = explode(' ', trim($m[1]));
+                if (!in_array($subnet, $cur)) {
+                    $cur[] = $subnet;
+                    $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                    file_put_contents($file, $newC);
+                }
+            }
+        }
+
+        exec("conntrack -D -d $subnet 2>/dev/null");
+        exec("conntrack -D -s 192.168.1.100 2>/dev/null");
+        exec("conntrack -D -s 192.168.1.101 2>/dev/null");
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'unblock_ggc_subnet') {
+        $subnet = trim($_POST['subnet'] ?? '');
+        exec("while iptables -D FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null; do :; done");
+
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+        if (file_exists($file)) {
+            $content = file_get_contents($file);
+            if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $m)) {
+                $cur = array_diff(explode(' ', trim($m[1])), [$subnet]);
+                $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                file_put_contents($file, $newC);
+            }
+        }
+
+        echo json_encode(['success' => true, 'subnet' => $subnet]);
+        exit;
+    }
+
+    if ($action === 'scan_and_unfreeze') {
+        $data = @file_get_contents('/proc/net/nf_conntrack');
+        preg_match_all('/src=192\.168\.1\.\d+.*?dst=([0-9.]+).*?dport=443/', $data, $m);
+        $rawIps = array_unique($m[1] ?? []);
+        $ips = [];
+        foreach ($rawIps as $ip) {
+            if (!preg_match('/^(192\.168|100\.64|127\.0|10\.|172\.(1[6-9]|2[0-9]|3[0-1]))/', $ip)) {
+                $ips[] = $ip;
+            }
+        }
+
+        $results = [];
+        $newlyBlocked = [];
+        $file = '/opt/etc/ndm/netfilter.d/051-block-dead-ggc.sh';
+
+        foreach ($ips as $ip) {
+            exec("iptables -C FORWARD -d $ip -p tcp --dport 443 -j REJECT 2>/dev/null && echo 1 || echo 0", $bOut);
+            $isBlocked = ($bOut[0] ?? '0') === '1';
+
+            $t0 = microtime(true);
+            exec("curl -k -I --max-time 1.2 https://$ip 2>&1 | head -n 1", $cOut);
+            $elapsed = round((microtime(true) - $t0) * 1000);
+            $info = $cOut[0] ?? '';
+
+            $isDead = (strpos($info, 'timed out') !== false || strpos($info, 'refused') !== false || empty($info));
+
+            if ($isDead && !$isBlocked) {
+                $subnet = preg_replace('/([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/', '$1.0/24', $ip);
+                exec("iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset");
+                $newlyBlocked[] = $subnet;
+                $isBlocked = true;
+
+                if (file_exists($file)) {
+                    $content = file_get_contents($file);
+                    if (preg_match('/DEAD_GGC="([^"]+)"/', $content, $mm)) {
+                        $cur = explode(' ', trim($mm[1]));
+                        if (!in_array($subnet, $cur)) {
+                            $cur[] = $subnet;
+                            $newC = preg_replace('/DEAD_GGC="[^"]+"/', 'DEAD_GGC="' . implode(' ', $cur) . '"', $content);
+                            file_put_contents($file, $newC);
+                        }
+                    }
+                }
+            }
+
+            $results[] = [
+                'ip' => $ip,
+                'latency_ms' => $elapsed,
+                'dead' => $isDead,
+                'blocked' => $isBlocked,
+                'info' => $info ? substr($info, 0, 50) : 'Нет ответа (таймаут)'
+            ];
+        }
+
+        exec("conntrack -D -s 192.168.1.100 2>/dev/null");
+        exec("conntrack -D -s 192.168.1.101 2>/dev/null");
+
+        echo json_encode([
+            'success' => true,
+            'scanned_count' => count($ips),
+            'results' => $results,
+            'newly_blocked' => $newlyBlocked,
+            'message' => count($newlyBlocked) > 0 
+                ? 'Обнаружен и заблокирован зависший узел: ' . implode(', ', $newlyBlocked) . '. Соединения сброшены!' 
+                : (count($ips) > 0 
+                    ? 'Проверено узлов: ' . count($ips) . '. Зависшие сессии сброшены, видео возобновлено!'
+                    : 'Сброс сокетов приставки выполнен!')
+        ]);
+        exit;
+    }
+
+    if ($action === 'get_status') {
         exec(INIT_SCRIPT . " status 2>&1", $out, $rc);
         $statusStr = implode("\n", $out);
         $isRunning = strpos($statusStr, 'is running') !== false;
@@ -657,6 +1556,252 @@ if (file_exists(CONF_FILE)) {
         .dot-red { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
 
         /* Diagnostics Box */
+        /* Freeze Killer & GGC Detective Styles */
+        .freeze-box {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95));
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            border-radius: 14px;
+            padding: 20px 22px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(245, 158, 11, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .freeze-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #f59e0b, #ef4444, #38bdf8);
+        }
+
+        .freeze-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .freeze-title-box {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            max-width: 680px;
+        }
+
+        .freeze-icon {
+            font-size: 26px;
+            line-height: 1;
+        }
+
+        .freeze-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .freeze-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            line-height: 1.45;
+        }
+
+        .freeze-actions-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .device-select {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #f8fafc;
+            padding: 9px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .device-select:focus {
+            border-color: #f59e0b;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #0f172a;
+            font-weight: 700;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13.5px;
+            box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .btn-warning:hover {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.45);
+        }
+
+        .blocked-subnets-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding-top: 14px;
+            margin-top: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .blocked-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .blocked-chips {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .blocked-chip {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #fca5a5;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .blocked-chip-del {
+            color: #ef4444;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .blocked-chip-del:hover {
+            color: #f87171;
+        }
+
+        .manual-ggc-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .subnet-input {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            color: #f8fafc;
+            padding: 6px 12px;
+            font-size: 12.5px;
+            font-family: monospace;
+            width: 220px;
+            outline: none;
+        }
+
+        .subnet-input:focus {
+            border-color: #f59e0b;
+        }
+
+        .btn-action-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+        }
+
+        .btn-test {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: rgba(56, 189, 248, 0.4);
+            color: #38bdf8;
+        }
+        .btn-test:hover {
+            background: rgba(56, 189, 248, 0.25);
+        }
+
+        .btn-block {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #f87171;
+        }
+        .btn-block:hover {
+            background: rgba(239, 68, 68, 0.25);
+        }
+
+        .scan-results-box {
+            margin-top: 14px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+
+        .scan-results-title {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .scan-results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 8px;
+        }
+
+        .scan-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            padding: 7px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .scan-item.dead {
+            border-color: rgba(239, 68, 68, 0.4);
+            background: rgba(239, 68, 68, 0.08);
+        }
+
+        .scan-item.ok {
+            border-color: rgba(52, 211, 153, 0.3);
+        }
+
         .diag-box {
             background: var(--card-bg);
             backdrop-filter: blur(12px);
@@ -1043,7 +2188,53 @@ if (file_exists(CONF_FILE)) {
     </div>
 
 
-        <!-- Live Diagnostics Box -->
+        <!-- Live GGC & CDN Freeze Killer Box -->
+    <div class="freeze-box">
+        <div class="freeze-header">
+            <div class="freeze-title-box">
+                <span class="freeze-icon">🚨</span>
+                <div>
+                    <h2 class="freeze-title">
+                        Реаниматор YouTube / Детектор зависших узлов
+                        <span class="badge badge-yellow" style="font-size: 11px;">GGC Killer</span>
+                    </h2>
+                    <p class="freeze-subtitle">
+                        Если ролик на ТВ или ПК замирает: нажмите кнопку — роутер мгновенно протестирует активные подключения, выявит зависший сервер провайдера (GGC), отправит TCP-сброс и заблокирует его. Видео продолжит воспроизведение без перезагрузки!
+                    </p>
+                </div>
+            </div>
+            <div class="freeze-actions-row">
+                <select id="targetDeviceSelect" class="device-select">
+                    <option value="current">💻 Это устройство</option>
+                    <option value="all" selected>🌐 Все устройства LAN</option>
+                </select>
+                <button class="btn btn-warning" onclick="scanAndUnfreeze()" id="btnUnfreeze">
+                    ⚡ Проверить и разблокировать видео
+                </button>
+            </div>
+        </div>
+
+        <div class="manual-ggc-row">
+            <span class="blocked-label">Тест / блокировка вручную:</span>
+            <input type="text" id="manualSubnetInput" placeholder="IP или подсеть (напр. 188.43.61.2)" class="subnet-input">
+            <button class="btn-action-sm btn-test" onclick="testManualTarget()">🔍 Проверить узел</button>
+            <button class="btn-action-sm btn-block" onclick="addManualSubnet()">🚫 Заблокировать подсеть (TCP-Reset)</button>
+        </div>
+
+        <div class="blocked-subnets-row">
+            <span class="blocked-label">Активная блокировка мертвых кэшей:</span>
+            <div id="blockedSubnetsList" class="blocked-chips">
+                <span style="color: var(--text-secondary); font-size: 12px;">Загрузка...</span>
+            </div>
+        </div>
+
+        <div id="scanResultsBox" style="display: none;" class="scan-results-box">
+            <div class="scan-results-title" id="scanResultsTitle">Результаты проверки соединений:</div>
+            <div class="scan-results-grid" id="scanResultsGrid"></div>
+        </div>
+    </div>
+
+    <!-- Live Diagnostics Box -->
     <div class="diag-box">
         <div class="diag-header">
             <div>
@@ -1361,6 +2552,192 @@ if (file_exists(CONF_FILE)) {
             });
     }
 
+
+    async function loadBlockedSubnets() {
+        try {
+            const fd = new FormData();
+            fd.append('action', 'get_blocked_ggc');
+            const res = await fetch('/menu.php', { method: 'POST', body: fd });
+            const data = await res.json();
+            const listEl = document.getElementById('blockedSubnetsList');
+            if (!listEl) return;
+
+            if (data.success && data.subnets && data.subnets.length > 0) {
+                listEl.innerHTML = data.subnets.map(s => `
+                    <span class="blocked-chip">
+                        <span>🛡️ ${s}</span>
+                        <span class="blocked-chip-del" onclick="removeSubnet('${s}')" title="Разблокировать подсеть">&times;</span>
+                    </span>
+                `).join('');
+            } else {
+                listEl.innerHTML = '<span style="color: var(--text-secondary); font-size: 12px;">Нет заблокированных подсетей</span>';
+            }
+        } catch (e) {
+            console.error('Error loading blocked subnets:', e);
+        }
+    }
+
+    async function testManualTarget() {
+        const inp = document.getElementById('manualSubnetInput');
+        const target = inp ? inp.value.trim() : '';
+        if (!target) {
+            showToast('Введите IP адрес или подсеть для проверки', true);
+            return;
+        }
+
+        showToast('Проверка доступности ' + target + ' с роутера...');
+        try {
+            const fd = new FormData();
+            fd.append('action', 'test_single_ip');
+            fd.append('target', target);
+
+            const res = await fetch('/menu.php', { method: 'POST', body: fd });
+            const data = await res.json();
+
+            const box = document.getElementById('scanResultsBox');
+            const grid = document.getElementById('scanResultsGrid');
+            const title = document.getElementById('scanResultsTitle');
+
+            if (data.success) {
+                if (box && grid) {
+                    box.style.display = 'block';
+                    title.textContent = `Результат проверки узла ${data.ip}:`;
+                    const statusText = data.dead ? '🚨 МЕРТВ / ТАЙМАУТ' : '🟢 ЖИВОЙ (' + data.latency_ms + ' ms)';
+                    grid.innerHTML = `
+                        <div class="scan-item ${data.dead ? 'dead' : 'ok'}" style="grid-column: 1 / -1;">
+                            <div>
+                                <strong>${data.ip}</strong> &mdash; ${statusText}<br>
+                                <small style="color: var(--text-secondary);">${data.header} ${data.server ? '| ' + data.server : ''}</small>
+                            </div>
+                            <div>
+                                ${data.blocked ? '<span class="badge badge-red">Уже заблокирован</span>' : `
+                                    <button class="btn-action-sm btn-block" onclick="addManualSubnet('${data.suggested_subnet}')">
+                                        🚫 Заблокировать ${data.suggested_subnet}
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    `;
+                }
+                showToast(data.dead ? 'Узел ' + data.ip + ' не отвечает!' : 'Узел ' + data.ip + ' ответил за ' + data.latency_ms + ' мс');
+            } else {
+                showToast('Ошибка проверки: ' + (data.error || ''), true);
+            }
+        } catch (e) {
+            showToast('Ошибка связи с роутером: ' + e, true);
+        }
+    }
+
+    async function addManualSubnet(customSubnet) {
+        const inp = document.getElementById('manualSubnetInput');
+        const subnet = customSubnet || (inp ? inp.value.trim() : '');
+        if (!subnet) return;
+
+        showToast('Добавление блокировки ' + subnet + '...');
+        try {
+            const fd = new FormData();
+            fd.append('action', 'block_ggc_subnet');
+            fd.append('subnet', subnet);
+
+            const res = await fetch('/menu.php', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success) {
+                if (inp) inp.value = '';
+                showToast('Подсеть ' + data.subnet + ' заблокирована через TCP-Reset!');
+                await loadBlockedSubnets();
+            } else {
+                showToast('Ошибка: ' + (data.error || 'Не удалось заблокировать'), true);
+            }
+        } catch (e) {
+            showToast('Ошибка сети: ' + e, true);
+        }
+    }
+
+    async function removeSubnet(subnet) {
+        if (!confirm('Разблокировать подсеть ' + subnet + '?')) return;
+        showToast('Удаление блокировки...');
+        try {
+            const fd = new FormData();
+            fd.append('action', 'unblock_ggc_subnet');
+            fd.append('subnet', subnet);
+
+            const res = await fetch('/menu.php', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Подсеть ' + subnet + ' разблокирована');
+                await loadBlockedSubnets();
+            }
+        } catch (e) {
+            showToast('Ошибка сети: ' + e, true);
+        }
+    }
+
+    async function scanAndUnfreeze() {
+        const btn = document.getElementById('btnUnfreeze');
+        const devSel = document.getElementById('targetDeviceSelect');
+        const targetDev = devSel ? devSel.value : 'all';
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Проверка соединений...';
+        }
+
+        const box = document.getElementById('scanResultsBox');
+        const grid = document.getElementById('scanResultsGrid');
+        const title = document.getElementById('scanResultsTitle');
+
+        showToast('Сканирование активных соединений с роутера...');
+        try {
+            const fd = new FormData();
+            fd.append('action', 'scan_and_unfreeze');
+            fd.append('target_device', targetDev);
+
+            const res = await fetch('/menu.php', { method: 'POST', body: fd });
+            const data = await res.json();
+
+            if (data.success) {
+                showToast(data.message, false);
+                await loadBlockedSubnets();
+
+                if (box && grid && data.results && data.results.length > 0) {
+                    box.style.display = 'block';
+                    title.textContent = `Проверено узлов: ${data.results.length}. Активные подключения:`;
+                    grid.innerHTML = data.results.map(r => `
+                        <div class="scan-item ${r.dead ? 'dead' : 'ok'}">
+                            <div>
+                                <span>${r.dead ? '🚨' : '🟢'} ${r.ip}</span>
+                                <small style="color: var(--text-secondary); margin-left: 6px;">${r.info}</small>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="color: ${r.dead ? '#f87171' : '#34d399'}; font-size: 11px;">
+                                    ${r.dead ? 'ТАЙМАУТ' : r.latency_ms + ' ms'}
+                                </span>
+                                ${r.blocked ? '<span class="badge badge-red" style="font-size: 10px;">Заблокирован</span>' : `
+                                    <button class="btn-action-sm btn-block" style="padding: 2px 7px; font-size: 10.5px;" onclick="addManualSubnet('${r.subnet}')" title="Заблокировать подсеть ${r.subnet}">
+                                        + Блок
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    `).join('');
+                } else if (box) {
+                    box.style.display = 'none';
+                }
+            } else {
+                showToast('Ошибка проверки: ' + (data.error || ''), true);
+            }
+        } catch (e) {
+            showToast('Ошибка связи с роутером: ' + e, true);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '⚡ Проверить и разблокировать видео';
+            }
+        }
+    }
+    }
+    }
+    }
 
     function syncGithub() {
         const btn = document.getElementById('btnSync');
