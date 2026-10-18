@@ -8,20 +8,24 @@
 #    На Smart TV (Dune HD, Android TV, Tizen, webOS) воспроизведение видео
 #    начинается, но через 1-2 минуты наглухо замирает (крутится кружок загрузки).
 #  Причина:
-#    YouTube переключает воспроизведение на локальный кэш-сервер провайдера
-#    (например, 128.75.235.173 в сети YarNet / Corbina), на котором порт HTTPS 443
-#    висит по таймауту из-за деградации или блокировок ТСПУ (РКН).
+#    YouTube переключает воспроизведение на локальные кэш-серверы провайдеров
+#    (например, 128.75.235.173 YarNet и 89.113.123.44 Beeline в Калуге),
+#    на которых порт HTTPS 443 висит по таймауту из-за деградации или ТСПУ (РКН).
 #  Решение:
 #    При попытке обращения к мертвому диапазону роутер за 0.001 сек возвращает
 #    TCP RST (сброс). Приставка мгновенно переключается на рабочие центральные
 #    серверы Google (142.251.x.x), отдающие видео на полной скорости 100 Мбит/с.
 # =============================================================================
 
-[ "$type" = "ip" ] || exit 0
-[ "$table" = "filter" ] || exit 0
+[ "$type" = "iptables" ] || [ -z "$type" ] || exit 0
+[ "$table" = "filter" ] || [ -z "$table" ] || exit 0
 
-# Диапазон мертвого GGC провайдера (замените или дополните при необходимости)
-DEAD_GGC="128.75.235.0/24"
+# Подсети мертвых региональных кэшей Google (дополните при необходимости):
+# 128.75.235.0/24 - YarNet / Corbina (Калуга)
+# 89.113.123.0/24 - Beeline / Corbina GGC (Калуга)
+DEAD_GGC="128.75.235.0/24 89.113.123.0/24"
 
-iptables -C FORWARD -d $DEAD_GGC -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || \
-iptables -I FORWARD -d $DEAD_GGC -p tcp --dport 443 -j REJECT --reject-with tcp-reset
+for subnet in $DEAD_GGC; do
+    iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || \
+    iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset
+done
