@@ -2735,9 +2735,6 @@ if (file_exists(CONF_FILE)) {
             }
         }
     }
-    }
-    }
-    }
 
     function syncGithub() {
         const btn = document.getElementById('btnSync');
