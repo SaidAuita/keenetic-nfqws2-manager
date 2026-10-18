@@ -1,7 +1,29 @@
-# Secrets & local config
+# Secrets & Credentials
 .env
 *.env.local
-!.env.example
+!*.env.example
+router_env.py
+
+# Router specific test, deploy & debug scripts
+check_*.py
+debug_*.py
+deploy_*.py
+test_*.py
+set_*.py
+setup_*.py
+update_*.py
+inspect_*.py
+monitor_*.py
+fetch_*.py
+diag_*.py
+apply_*.py
+verify_clean.py
+clean_repo_files.py
+ssh_cmd.py
+
+# Router private VPN customized web menu (public is menu.php)
+web_menu.php
+router_backup/
 
 # Python
 __pycache__/
