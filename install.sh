@@ -39,13 +39,17 @@ fi
 chmod 644 /opt/etc/nfqws-menu/strategy_dates.json
 
 # 3. Установка кастомной стратегии для Smart TV / Dune HD
-echo "[+] Установка стратегии dune_yarnet.conf..."
+echo "[+] Установка стратегии beeline_kaluga.conf..."
 mkdir -p /opt/etc/nfqws-menu/strategies/nfqws2
-if [ -f "$DIR/nfqws-menu/strategies/nfqws2/dune_yarnet.conf" ]; then
-    cp "$DIR/nfqws-menu/strategies/nfqws2/dune_yarnet.conf" /opt/etc/nfqws-menu/strategies/nfqws2/
-elif [ -f "$DIR/strategies/dune_yarnet.conf" ]; then
+if [ -f "$DIR/nfqws-menu/strategies/nfqws2/beeline_kaluga.conf" ]; then
+    cp "$DIR/nfqws-menu/strategies/nfqws2/beeline_kaluga.conf" /opt/etc/nfqws-menu/strategies/nfqws2/
+elif [ -f "$DIR/strategies/beeline_kaluga.conf" ]; then
+    cp "$DIR/strategies/beeline_kaluga.conf" /opt/etc/nfqws-menu/strategies/nfqws2/
+fi
+if [ -f "$DIR/strategies/dune_yarnet.conf" ]; then
     cp "$DIR/strategies/dune_yarnet.conf" /opt/etc/nfqws-menu/strategies/nfqws2/
 fi
+
 
 # 4. Установка скрипта сброса мертвых серверов GGC
 echo "[+] Установка фикса мертвых GGC серверов (051-block-dead-ggc.sh)..."
