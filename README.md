@@ -40,7 +40,7 @@
 Подключитесь к роутеру по SSH (`ssh root@192.168.1.1 -p 222`) и выполните команду:
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/keenetic-nfqws2-manager/main/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/SaidAuita/keenetic-nfqws2-manager/main/install.sh)"
 ```
 
 После завершения установки откройте в браузере:  

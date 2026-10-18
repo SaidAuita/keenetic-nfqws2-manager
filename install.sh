@@ -2,7 +2,7 @@
 # =============================================================================
 #  Установщик Keenetic NFQWS2 Web Strategy Manager
 #  Установка одной командой на роутере Keenetic (Entware):
-#    sh -c "$(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/keenetic-nfqws2-manager/main/install.sh)"
+#    sh -c "$(curl -fsSL https://raw.githubusercontent.com/SaidAuita/keenetic-nfqws2-manager/main/install.sh)"
 # =============================================================================
 
 set -e
@@ -17,7 +17,7 @@ if [ ! -d "/opt/share/www/nfqws" ]; then
 fi
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_BASE="https://raw.githubusercontent.com/YOUR_USERNAME/keenetic-nfqws2-manager/main"
+REPO_BASE="https://raw.githubusercontent.com/SaidAuita/keenetic-nfqws2-manager/main"
 
 # 1. Установка menu.php
 echo "[+] Установка menu.php в /opt/share/www/nfqws/..."
