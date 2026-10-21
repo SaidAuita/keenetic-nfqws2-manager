@@ -1,4 +1,6 @@
 <?php
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 /**
  * NFQWS2 Strategy Manager & Universal Bypass Diagnostics Web GUI
  * URL: http://192.168.1.1:90/menu.php
@@ -57,31 +59,23 @@ function saveStrategyArchive($list) {
 function syncVpnRouting($devices, $servers) {
     @mkdir(XRAY_DIR, 0755, true);
     
-    // 1. Gather enabled IPs
+    // 1. Gather enabled IPs and sync legacy flag files for compatibility
     $enabledIps = [];
     $devMap = [];
     foreach ($devices as $d) {
         $devMap[$d['id']] = $d;
-        if (!empty($d['enabled']) && !empty($d['ip'])) {
-            $enabledIps[] = $d['ip'];
-        }
-    }
-    file_put_contents(XRAY_ENABLED_IPS_FILE, implode("\n", $enabledIps) . "\n");
-
-    // 2. Ensure iptables NAT chain
-    exec("iptables -t nat -N DUNE_VPN 2>/dev/null");
-    
-    // Apply or remove PREROUTING rules
-    foreach ($devices as $d) {
         $ip = $d['ip'] ?? '';
         if (!$ip) continue;
         if (!empty($d['enabled'])) {
-            exec("iptables -t nat -C PREROUTING -s $ip -j DUNE_VPN 2>/dev/null || iptables -t nat -I PREROUTING -s $ip -j DUNE_VPN");
+            $enabledIps[] = $ip;
+            if ($ip === '192.168.1.145') @touch('/opt/etc/xray/dune_kuh.enabled');
+            if ($ip === '192.168.1.53')  @touch('/opt/etc/xray/dune_komnata.enabled');
         } else {
-            exec("while iptables -t nat -D PREROUTING -s $ip -j DUNE_VPN 2>/dev/null; do :; done");
+            if ($ip === '192.168.1.145') @unlink('/opt/etc/xray/dune_kuh.enabled');
+            if ($ip === '192.168.1.53')  @unlink('/opt/etc/xray/dune_komnata.enabled');
         }
-        exec("conntrack -D -s $ip 2>/dev/null");
     }
+    file_put_contents(XRAY_ENABLED_IPS_FILE, implode("\n", $enabledIps) . "\n");
 
     // 3. Build Xray multi-outbound + source routing config
     if (empty($servers)) {
@@ -208,6 +202,19 @@ function syncVpnRouting($devices, $servers) {
 
     file_put_contents(XRAY_CONF, json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     exec(XRAY_INIT . " restart 2>&1");
+
+    // 2. Ensure iptables NAT chain and PREROUTING rules are active AFTER Xray restart
+    exec("iptables -t nat -N DUNE_VPN 2>/dev/null");
+    foreach ($devices as $d) {
+        $ip = $d['ip'] ?? '';
+        if (!$ip) continue;
+        if (!empty($d['enabled'])) {
+            exec("iptables -t nat -C PREROUTING -s $ip -j DUNE_VPN 2>/dev/null || iptables -t nat -I PREROUTING -s $ip -j DUNE_VPN");
+        } else {
+            exec("while iptables -t nat -D PREROUTING -s $ip -j DUNE_VPN 2>/dev/null; do :; done");
+        }
+        exec("conntrack -D -s $ip 2>/dev/null");
+    }
 }
 
 function parseVlessString($link, $defaultGroup = 'VPN') {
@@ -404,16 +411,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $srvMap[$s['id']] = $s;
         }
 
-        // Check real iptables rule for each device
+        // Check real iptables rule for each device and self-heal
         foreach ($devices as &$d) {
             $ip = $d['ip'] ?? '';
-            $chk = 0;
+            $confEnabled = !empty($d['enabled']);
+            $iptablesOk = false;
             if ($ip) {
                 exec("iptables -t nat -C PREROUTING -s $ip -j DUNE_VPN 2>/dev/null && echo 1 || echo 0", $chkOut);
-                $chk = ($chkOut[0] ?? '0') === '1';
+                $iptablesOk = ($chkOut[0] ?? '0') === '1';
                 unset($chkOut);
+
+                // Self-heal: If configured enabled but missing in iptables, restore immediately
+                if ($confEnabled && !$iptablesOk) {
+                    exec("iptables -t nat -C PREROUTING -s $ip -j DUNE_VPN 2>/dev/null || iptables -t nat -I PREROUTING -s $ip -j DUNE_VPN");
+                    $iptablesOk = true;
+                }
             }
-            $d['enabled'] = $chk;
+            $d['enabled'] = $confEnabled;
+            $d['iptables_active'] = $iptablesOk;
             $sid = $d['server'] ?? ($servers[0]['id'] ?? '');
             $d['server_name'] = $srvMap[$sid]['name'] ?? ($servers[0]['name'] ?? 'VLESS Reality');
             $d['server_group'] = $srvMap[$sid]['group'] ?? ($servers[0]['group'] ?? 'VPN');
@@ -2127,21 +2142,89 @@ $initialVpnDevices = loadVpnDevices();
         .btn-vpn-toggle {
             flex: 1;
             justify-content: center;
-            padding: 10px;
-            font-size: 13.5px;
+            padding: 12px 16px;
+            font-size: 14px;
             font-weight: 700;
-            border-radius: 8px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
 
+        /* Active / Pressed / ON state - Vivid Glowing Emerald */
+        .btn-vpn-active {
+            background: linear-gradient(135deg, #059669, #10b981) !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(52, 211, 153, 0.7) !important;
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45) !important;
+        }
+
+        .btn-vpn-active:hover {
+            background: linear-gradient(135deg, #047857, #059669) !important;
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6) !important;
+            transform: translateY(-1px);
+        }
+
+        .btn-vpn-active:active {
+            transform: scale(0.97);
+        }
+
+        /* Inactive / OFF state - Sleek Dark with Cyan/Blue Outline */
+        .btn-vpn-inactive {
+            background: linear-gradient(135deg, #1e293b, #0f172a) !important;
+            color: #38bdf8 !important;
+            border: 1px solid rgba(56, 189, 248, 0.4) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+        }
+
+        .btn-vpn-inactive:hover {
+            background: linear-gradient(135deg, #0284c7, #0369a1) !important;
+            color: #ffffff !important;
+            border-color: rgba(56, 189, 248, 0.6) !important;
+            box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4) !important;
+            transform: translateY(-1px);
+        }
+
+        .btn-vpn-inactive:active {
+            transform: scale(0.97);
+        }
+
+        /* Backward compat with any cached btn-vpn-off */
         .btn-vpn-off {
-            background: linear-gradient(135deg, #475569, #334155);
-            color: #f1f5f9;
-            border-color: rgba(255, 255, 255, 0.15);
+            background: linear-gradient(135deg, #059669, #10b981) !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(52, 211, 153, 0.7) !important;
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45) !important;
         }
 
-        .btn-vpn-off:hover {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-            border-color: rgba(239, 68, 68, 0.5);
+        /* Loading states */
+        .btn-vpn-loading-on {
+            background: linear-gradient(135deg, #065f46, #047857) !important;
+            color: #a7f3d0 !important;
+            border: 1px solid rgba(52, 211, 153, 0.5) !important;
+            opacity: 0.9;
+            cursor: wait;
+        }
+
+        .btn-vpn-loading-off {
+            background: linear-gradient(135deg, #334155, #1e293b) !important;
+            color: #94a3b8 !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            opacity: 0.9;
+            cursor: wait;
+        }
+
+        /* Pulse animation for active VPN badge */
+        @keyframes vpnPulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .vpn-badge-pulse {
+            animation: vpnPulse 2s infinite;
         }
 
         .btn-vpn-del {
@@ -2755,6 +2838,34 @@ $initialVpnDevices = loadVpnDevices();
             border-radius: 12px;
             border: 1px solid var(--card-border);
             margin-bottom: 32px;
+        }
+
+        /* Mobile responsive adjustments */
+        @media (max-width: 640px) {
+            .container { padding: 0 4px; }
+            .vpn-devices-grid {
+                grid-template-columns: 1fr;
+            }
+            .vpn-card {
+                padding: 14px 14px;
+            }
+            .btn-vpn-toggle {
+                padding: 13px 14px;
+                font-size: 14px;
+            }
+            .vpn-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .vpn-header-actions {
+                width: 100%;
+                display: flex;
+                gap: 8px;
+            }
+            .vpn-header-actions .btn {
+                flex: 1;
+                justify-content: center;
+            }
         }
     </style>
 </head>
@@ -3524,10 +3635,10 @@ $initialVpnDevices = loadVpnDevices();
 
         let html = '';
         vpnDevices.forEach(d => {
-            const isAct = d.enabled;
+            const isAct = Boolean(d.enabled);
             const cardClass = isAct ? 'vpn-card vpn-active' : 'vpn-card';
             const statusBadge = isAct 
-                ? '<span class="badge badge-success">🟢 VPN АКТИВЕН</span>' 
+                ? '<span class="badge badge-success vpn-badge-pulse">🟢 VPN ВКЛЮЧЕН</span>' 
                 : '<span class="badge badge-secondary">⚪ ПРЯМОЙ ДОСТУП</span>';
 
             // Server select options grouped by provider
@@ -3553,8 +3664,8 @@ $initialVpnDevices = loadVpnDevices();
                 : 'Провайдер напрямую (без VPN)';
             const routeColor = isAct ? '#34d399' : 'var(--text-secondary)';
 
-            const btnText = isAct ? '⏹️ Отключить VPN' : '🚀 Включить VPN';
-            const btnClass = isAct ? 'btn btn-vpn-toggle btn-vpn-off' : 'btn btn-vpn-toggle btn-primary';
+            const btnText = isAct ? '🟢 VPN ВКЛЮЧЕН · Отключить' : '🚀 Включить VPN';
+            const btnClass = isAct ? 'btn btn-vpn-toggle btn-vpn-active' : 'btn btn-vpn-toggle btn-vpn-inactive';
 
             html += `
                 <div class="${cardClass}" id="vpn-card-${d.id}">
@@ -3597,13 +3708,19 @@ $initialVpnDevices = loadVpnDevices();
 
     async function toggleVpnDevice(id) {
         const btn = document.getElementById('btn-toggle-' + id);
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = '⏳ Переключение...';
-        }
-
         const dev = vpnDevices.find(x => x.id === id);
         const nextState = dev ? !dev.enabled : true;
+
+        if (btn) {
+            btn.disabled = true;
+            if (nextState) {
+                btn.className = 'btn btn-vpn-toggle btn-vpn-loading-on';
+                btn.innerHTML = '⏳ Включаем VPN...';
+            } else {
+                btn.className = 'btn btn-vpn-toggle btn-vpn-loading-off';
+                btn.innerHTML = '⏳ Отключаем VPN...';
+            }
+        }
 
         try {
             const fd = new FormData();
@@ -3615,14 +3732,14 @@ $initialVpnDevices = loadVpnDevices();
             const data = await res.json();
             if (data.success) {
                 await loadVpnStatus();
-                showToast(nextState ? `VPN включен для ${dev ? dev.name : id}` : `VPN отключен`);
+                showToast(nextState ? `🟢 VPN включен для «${dev ? dev.name : id}»` : `⚪ VPN отключен для «${dev ? dev.name : id}»`);
             } else {
                 showToast('Ошибка: ' + (data.error || 'Не удалось переключить'), true);
+                await loadVpnStatus();
             }
         } catch (e) {
             showToast('Ошибка связи с роутером: ' + e, true);
-        } finally {
-            if (btn) btn.disabled = false;
+            await loadVpnStatus();
         }
     }
 

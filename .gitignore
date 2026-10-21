@@ -22,9 +22,16 @@ scan_*.py
 fix_*.py
 add_*.py
 build_*.py
+restore_*.py
+uninstall_*.py
 verify_clean.py
 clean_repo_files.py
 ssh_cmd.py
+
+# Local private docs & notes
+docs/*UI*.md
+docs/_*.md
+docs/PLAN_*.md
 
 # Router private VPN customized web menu (public is menu.php)
 web_menu.php
