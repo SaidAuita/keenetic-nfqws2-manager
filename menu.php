@@ -1309,6 +1309,15 @@ if (file_exists(DATES_FILE)) {
 
 // --- STRATEGIES METADATA ---
 $knownStrategies = [
+    'alukard_tv.conf' => [
+        'name' => 'ALUKARD TV: Zero-Blob + TCP-Seg (24.10)',
+        'badge' => '🔥 Свежая (24.10) / Smart TV & Mi Box',
+        'badge_cls' => 'badge-fire',
+        'prio' => 0,
+        'tv' => true,
+        'desc' => 'Свежайший фикс от 24 октября 2026 против массового отвала YouTube на Smart TV (Samsung TV, Xiaomi Mi Box, Dune HD). Использует сырой нулевой блоб с десинхронизацией счетчиков TCP seq/ack и сегментацией tcpseg с перекрытием TLS 0x1603030000 (12 repeats). Пробивает прогрев DPI.',
+        'category' => 'recommended'
+    ],
     'zemidala_sniext.conf' => [
         'name' => 'ZEMIDALA: SNIExt+4 (YouTube)',
         'badge' => '🧪 Эксп. AS51570 (12.10)',
@@ -1542,9 +1551,17 @@ if (file_exists(CONF_FILE)) {
     }
 }
 
-// Load initial VPN data for server counts
+// Load initial VPN data for server counts and active mode banner
 $initialVpnServers = loadVpnServers();
 $initialVpnDevices = loadVpnDevices();
+
+$initialActiveVpnList = [];
+foreach ($initialVpnDevices as $d) {
+    if (!empty($d['enabled'])) {
+        $initialActiveVpnList[] = ($d['icon'] ?? '📺') . ' ' . ($d['name'] ?? $d['id']);
+    }
+}
+$isInitialVpnActive = count($initialActiveVpnList) > 0;
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -1590,6 +1607,121 @@ $initialVpnDevices = loadVpnDevices();
         .container {
             max-width: 1240px;
             margin: 0 auto;
+        }
+
+        /* Top Master Mode Banner (Direct Bypass vs VPN) */
+        .top-mode-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 14px 20px;
+            border-radius: 14px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.45);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .top-mode-banner::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.08), transparent 70%);
+        }
+
+        .top-mode-banner.mode-vpn {
+            background: linear-gradient(135deg, rgba(67, 56, 202, 0.35) 0%, rgba(147, 51, 234, 0.28) 100%);
+            border: 1px solid rgba(168, 85, 247, 0.5);
+            box-shadow: 0 0 25px rgba(147, 51, 234, 0.2);
+        }
+
+        .top-mode-banner.mode-direct {
+            background: linear-gradient(135deg, rgba(5, 150, 105, 0.28) 0%, rgba(14, 116, 144, 0.25) 100%);
+            border: 1px solid rgba(52, 211, 153, 0.45);
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.15);
+        }
+
+        .top-mode-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .top-mode-icon-box {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.05);
+        }
+
+        .top-mode-banner.mode-vpn .top-mode-icon-box {
+            background: rgba(168, 85, 247, 0.2);
+            border: 1px solid rgba(168, 85, 247, 0.4);
+            animation: vpnPulse 2.5s infinite;
+        }
+
+        .top-mode-banner.mode-direct .top-mode-icon-box {
+            background: rgba(52, 211, 153, 0.18);
+            border: 1px solid rgba(52, 211, 153, 0.35);
+        }
+
+        .top-mode-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .top-mode-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .top-mode-banner.mode-vpn .top-mode-label { color: #c084fc; }
+        .top-mode-banner.mode-direct .top-mode-label { color: #6ee7b7; }
+
+        .top-mode-title {
+            font-size: 17px;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.25;
+        }
+
+        .top-mode-sub {
+            font-size: 12.5px;
+            color: #cbd5e1;
+        }
+
+        .top-mode-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .top-mode-banner {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+                padding: 12px 14px;
+            }
+            .top-mode-title {
+                font-size: 15px;
+            }
+            .top-mode-right {
+                width: 100%;
+                justify-content: flex-end;
+            }
         }
 
         /* Top Header */
@@ -2872,6 +3004,29 @@ $initialVpnDevices = loadVpnDevices();
 <body>
 
 <div class="container">
+    <!-- Master Active Mode Indicator Banner (Optimized for Mobile & Desktop) -->
+    <div class="top-mode-banner <?= $isInitialVpnActive ? 'mode-vpn' : 'mode-direct' ?>" id="topModeBanner">
+        <div class="top-mode-left">
+            <div class="top-mode-icon-box" id="topModeIcon"><?= $isInitialVpnActive ? '🚀' : '⚡' ?></div>
+            <div class="top-mode-info">
+                <div class="top-mode-label" id="topModeLabel">
+                    <?= $isInitialVpnActive ? 'АКТИВНЫЙ РЕЖИМ: ПЕРСОНАЛЬНЫЙ VPN ТУННЕЛЬ' : 'АКТИВНЫЙ РЕЖИМ: ПРЯМОЙ ОБХОД ТСПУ (NFQWS2)' ?>
+                </div>
+                <div class="top-mode-title" id="topModeTitle">
+                    <?= $isInitialVpnActive ? 'VPN ТУННЕЛЬ АКТИВЕН' : htmlspecialchars($activeStrategyName) ?>
+                </div>
+                <div class="top-mode-sub" id="topModeSub">
+                    <?= $isInitialVpnActive ? 'Трафик через VPN для: ' . htmlspecialchars(implode(', ', $initialActiveVpnList)) : 'Все устройства сети работают напрямую через Beeline без VPN (десинхронизация TLS 1.2 / TLS 1.3)' ?>
+                </div>
+            </div>
+        </div>
+        <div class="top-mode-right">
+            <span class="badge <?= $isInitialVpnActive ? 'badge-purple vpn-badge-pulse' : 'badge-success' ?>" id="topModeBadge" style="font-size: 13px; padding: 6px 14px;">
+                <?= $isInitialVpnActive ? '🟢 VPN: ' . count($initialActiveVpnList) . ' устр.' : '🟢 ПРЯМОЙ ОБХОД' ?>
+            </span>
+        </div>
+    </div>
+
     <!-- Header -->
     <header class="header">
         <div class="logo-box">
@@ -2912,54 +3067,8 @@ $initialVpnDevices = loadVpnDevices();
         </div>
     </div>
 
-    <!-- Live GGC & CDN Freeze Killer Box -->
-    <div class="freeze-box">
-        <div class="freeze-header">
-            <div class="freeze-title-box">
-                <span class="freeze-icon">🚨</span>
-                <div>
-                    <h2 class="freeze-title">
-                        Реаниматор YouTube / Детектор зависших узлов
-                        <span class="badge badge-yellow" style="font-size: 11px;">GGC Killer</span>
-                    </h2>
-                    <p class="freeze-subtitle">
-                        Если ролик на ТВ или ПК замирает: нажмите кнопку — роутер мгновенно протестирует активные подключения, выявит зависший сервер провайдера (GGC), отправит TCP-сброс и заблокирует его. Видео продолжит воспроизведение без перезагрузки!
-                    </p>
-                </div>
-            </div>
-            <div class="freeze-actions-row">
-                <select id="targetDeviceSelect" class="device-select">
-                    <option value="current">💻 Это устройство</option>
-                    <option value="all" selected>🌐 Все устройства LAN</option>
-                </select>
-                <button class="btn btn-warning" onclick="scanAndUnfreeze()" id="btnUnfreeze">
-                    ⚡ Проверить и разблокировать видео
-                </button>
-            </div>
-        </div>
-
-        <div class="manual-ggc-row">
-            <span class="blocked-label">Тест / блокировка вручную:</span>
-            <input type="text" id="manualSubnetInput" placeholder="IP или подсеть (напр. 188.43.61.2)" class="subnet-input">
-            <button class="btn-action-sm btn-test" onclick="testManualTarget()">🔍 Проверить узел</button>
-            <button class="btn-action-sm btn-block" onclick="addManualSubnet()">🚫 Заблокировать подсеть (TCP-Reset)</button>
-        </div>
-
-        <div class="blocked-subnets-row">
-            <span class="blocked-label">Активная блокировка мертвых кэшей:</span>
-            <div id="blockedSubnetsList" class="blocked-chips">
-                <span style="color: var(--text-secondary); font-size: 12px;">Загрузка...</span>
-            </div>
-        </div>
-
-        <div id="scanResultsBox" style="display: none;" class="scan-results-box">
-            <div class="scan-results-title" id="scanResultsTitle">Результаты проверки соединений:</div>
-            <div class="scan-results-grid" id="scanResultsGrid"></div>
-        </div>
-    </div>
-
-    <!-- UNIVERSAL VPN SECTION FOR LOCAL NETWORK DEVICES -->
-    <div class="vpn-section">
+    <!-- UNIVERSAL VPN SECTION FOR LOCAL NETWORK DEVICES (MOVED TO TOP FOR MOBILE ACCESSIBILITY) -->
+    <div class="vpn-section" id="vpnSection">
         <div class="vpn-header">
             <div class="vpn-header-left">
                 <div class="vpn-title-row">
@@ -3021,6 +3130,8 @@ $initialVpnDevices = loadVpnDevices();
             </div>
         </div>
     </div>
+
+
 
     <!-- STRATEGY TABS (ACTIVE vs ARCHIVE) -->
     <div class="strategy-tabs-bar">
@@ -3704,6 +3815,48 @@ $initialVpnDevices = loadVpnDevices();
         });
 
         grid.innerHTML = html;
+        updateTopModeBanner();
+    }
+
+    function updateTopModeBanner() {
+        const banner = document.getElementById('topModeBanner');
+        const iconEl = document.getElementById('topModeIcon');
+        const labelEl = document.getElementById('topModeLabel');
+        const titleEl = document.getElementById('topModeTitle');
+        const subEl = document.getElementById('topModeSub');
+        const badgeEl = document.getElementById('topModeBadge');
+        if (!banner) return;
+
+        const activeVpn = (vpnDevices || []).filter(d => Boolean(d.enabled));
+        const stratEl = document.getElementById('activeStratText');
+        const activeStrat = stratEl ? stratEl.textContent.trim() : 'DUNE HD & BEELINE (Калуга)';
+
+        if (activeVpn.length > 0) {
+            banner.className = 'top-mode-banner mode-vpn';
+            if (iconEl) iconEl.textContent = '🚀';
+            if (labelEl) labelEl.textContent = 'АКТИВНЫЙ РЕЖИМ: ПЕРСОНАЛЬНЫЙ VPN ТУННЕЛЬ';
+            const devNames = activeVpn.map(d => `${d.icon || '📺'} ${d.name}`).join(', ');
+            if (titleEl) titleEl.textContent = 'VPN ТУННЕЛЬ АКТИВЕН';
+            if (subEl) subEl.textContent = `Трафик через VPN для: ${devNames} (остальные устройства — через прямой обход)`;
+            if (badgeEl) {
+                badgeEl.className = 'badge badge-purple vpn-badge-pulse';
+                badgeEl.style.fontSize = '13px';
+                badgeEl.style.padding = '6px 14px';
+                badgeEl.textContent = `🟢 VPN: ${activeVpn.length} устр.`;
+            }
+        } else {
+            banner.className = 'top-mode-banner mode-direct';
+            if (iconEl) iconEl.textContent = '⚡';
+            if (labelEl) labelEl.textContent = 'АКТИВНЫЙ РЕЖИМ: ПРЯМОЙ ОБХОД ТСПУ (NFQWS2)';
+            if (titleEl) titleEl.textContent = activeStrat;
+            if (subEl) subEl.textContent = 'Все устройства сети работают напрямую через Beeline без VPN (десинхронизация TLS 1.2 / TLS 1.3)';
+            if (badgeEl) {
+                badgeEl.className = 'badge badge-success';
+                badgeEl.style.fontSize = '13px';
+                badgeEl.style.padding = '6px 14px';
+                badgeEl.textContent = '🟢 ПРЯМОЙ ОБХОД';
+            }
+        }
     }
 
     async function toggleVpnDevice(id) {

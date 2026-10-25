@@ -55,3 +55,7 @@ venv/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Binary tools & archives
+*.zip
+platform-tools-latest-windows/
