@@ -524,7 +524,7 @@ public class MainActivity extends Activity {
             }
         }
 
-        // Group servers by group name (e.g. YummyVPN, ph-cu-s)
+        // Group servers by provider / group name
         Map<String, List<ApiClient.ServerInfo>> groups = new LinkedHashMap<>();
         for (ApiClient.ServerInfo s : servers) {
             String grp = s.group != null && !s.group.isEmpty() ? s.group : "VPN Серверы";
