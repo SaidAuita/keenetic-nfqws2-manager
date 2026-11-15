@@ -31,5 +31,5 @@ DEAD_GGC="128.75.235.0/24 128.75.236.0/24 89.113.123.0/24 85.249.245.0/24"
 
 for subnet in $DEAD_GGC; do
     iptables -C FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset 2>/dev/null || \
-    iptables -I FORWARD -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset
+    iptables -I FORWARD 1 -d $subnet -p tcp --dport 443 -j REJECT --reject-with tcp-reset
 done

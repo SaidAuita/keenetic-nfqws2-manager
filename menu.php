@@ -1192,6 +1192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         $newConf = str_replace(["\r\n", "\r"], "\n", $newConf);
+        $newConf = "# ACTIVE_STRATEGY: " . $strategyFile . "\n# general (" . str_replace('.conf', '', $strategyFile) . ").conf\n" . $newConf;
 
         if (preg_match('/^ISP_INTERFACE=/m', $newConf)) {
             $newConf = preg_replace('/^ISP_INTERFACE=.*$/m', 'ISP_INTERFACE="ppp1"', $newConf);
@@ -1309,6 +1310,15 @@ if (file_exists(DATES_FILE)) {
 
 // --- STRATEGIES METADATA ---
 $knownStrategies = [
+    'exp_multidisorder_wssize.conf' => [
+        'name' => 'EXP: MULTIDISORDER & WSSIZE (Резерв)',
+        'badge' => '🧪 Эксперимент (26.10)',
+        'badge_cls' => 'badge-warning',
+        'prio' => 0,
+        'tv' => true,
+        'desc' => 'Экспериментальная стратегия на крайний случай жестких блокировок: wssize (wsize=1:scale=6) + syndata + multidisorder (pos=host+3,host+6,host+11,host+16,sld,midsld+4,midsld+2,endhost-12:seqovl=sld:seqovl_pattern=0x474554202f). Дробит ClientHello более чем на 8 частей для обхода многоядерного ТСПУ.',
+        'category' => 'recommended'
+    ],
     'alukard_tv.conf' => [
         'name' => 'ALUKARD TV: Zero-Blob + TCP-Seg (24.10)',
         'badge' => '🔥 Свежая (24.10) / Smart TV & Mi Box',
@@ -1541,13 +1551,32 @@ foreach ($allFiles as $f) {
 }
 
 // Active Strategy Detection
+$activeStrategyFile = '';
 $activeStrategyName = 'Не определена (Custom)';
 if (file_exists(CONF_FILE)) {
     $conf = file_get_contents(CONF_FILE);
-    if (preg_match('/#\s*general\s*\(([^)]+)\)/i', $conf, $m)) {
-        $activeStrategyName = trim($m[1]);
-    } elseif (preg_match('/hostfakesplit:host=www\.google\.com/i', $conf)) {
-        $activeStrategyName = 'hostfakesplit (Этап 2)';
+    if (preg_match('/#\s*ACTIVE_STRATEGY:\s*([^\s\n]+)/i', $conf, $m)) {
+        $activeStrategyFile = trim($m[1]);
+    } elseif (preg_match('/#\s*general\s*\(([^)]+)\)/i', $conf, $m)) {
+        $raw = trim($m[1]);
+        $activeStrategyFile = str_ends_with($raw, '.conf') ? $raw : ($raw . '.conf');
+    }
+    
+    // Auto-detect by signature if tag was missing
+    if (!$activeStrategyFile || !isset($strategies[$activeStrategyFile])) {
+        if (str_contains($conf, 'wssize:wsize=1') && str_contains($conf, 'multidisorder:pos=host+3')) {
+            $activeStrategyFile = 'exp_multidisorder_wssize.conf';
+        } elseif (str_contains($conf, '0x1603030000') || str_contains($conf, 'alukard_tv')) {
+            $activeStrategyFile = 'alukard_tv.conf';
+        } elseif (str_contains($conf, 'hostfakesplit:host=www.google.com')) {
+            $activeStrategyFile = 'beeline_kaluga.conf';
+        }
+    }
+
+    if ($activeStrategyFile && isset($strategies[$activeStrategyFile])) {
+        $activeStrategyName = $strategies[$activeStrategyFile]['name'];
+    } elseif ($activeStrategyFile && isset($knownStrategies[$activeStrategyFile])) {
+        $activeStrategyName = $knownStrategies[$activeStrategyFile]['name'];
     }
 }
 
@@ -3181,7 +3210,9 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
     <div class="strategies-grid" id="strategiesGrid">
         <?php foreach ($strategies as $file => $meta): ?>
             <?php 
-                $isActive = (stripos($activeStrategyName, $meta['name']) !== false) || 
+                $isActive = ($activeStrategyFile === $file) || 
+                            (stripos($activeStrategyName, $meta['name']) !== false) ||
+                            (stripos($meta['name'], $activeStrategyName) !== false) ||
                             ($meta['name'] === 'ALT4' && stripos($activeStrategyName, 'ALT4') !== false) ||
                             ($meta['name'] === 'ALT11' && stripos($activeStrategyName, 'ALT11') !== false) ||
                             ($meta['name'] === 'HARDCORP74' && stripos($activeStrategyName, 'hardcorp74') !== false) ||
