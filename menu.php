@@ -31,7 +31,14 @@ function loadVpnServers() {
 
 function saveVpnServers($servers) {
     @mkdir(XRAY_DIR, 0755, true);
-    file_put_contents(XRAY_SERVERS_FILE, json_encode(array_values($servers), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    $unique = [];
+    foreach ($servers as $s) {
+        $id = $s['id'] ?? '';
+        if ($id) {
+            $unique[$id] = $s;
+        }
+    }
+    file_put_contents(XRAY_SERVERS_FILE, json_encode(array_values($unique), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 }
 
 function loadVpnDevices() {
@@ -1074,11 +1081,18 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         }
 
         if (!empty($allUpdated)) {
+            $updatedUrls = array_keys($subUrls);
             $kept = [];
             foreach ($servers as $s) {
-                if (!in_array($s['group'] ?? '', $updatedGroups)) {
-                    $kept[] = $s;
+                $srvSub = $s['sub_url'] ?? '';
+                $srvGrp = $s['group'] ?? '';
+                if ($srvSub && in_array($srvSub, $updatedUrls)) {
+                    continue;
                 }
+                if ($srvGrp && in_array($srvGrp, $updatedGroups)) {
+                    continue;
+                }
+                $kept[] = $s;
             }
             $merged = array_merge($allUpdated, $kept);
             saveVpnServers($merged);
@@ -3823,9 +3837,14 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
         <div class="modal-body">
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
                 <input type="text" id="serversModalSearch" class="form-control" placeholder="🔍 Введите текст для поиска серверов..." oninput="filterServersModal(this.value)">
-                <button class="btn btn-primary" onclick="openAddServerModal()" style="white-space: nowrap;">
-                    ➕ Добавить сервер
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-outline" onclick="refreshAllSubscriptionsWeb()" style="white-space: nowrap;" title="Скачать свежие серверы по всем подпискам">
+                        🔄 Обновить все
+                    </button>
+                    <button class="btn btn-primary" onclick="openAddServerModal()" style="white-space: nowrap;">
+                        ➕ Добавить сервер
+                    </button>
+                </div>
             </div>
 
             <div id="happServersContainer">
@@ -4931,6 +4950,24 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
                 renderHappServers();
                 await loadVpnStatus();
                 showToast(data.message || `Подписка «${group}» обновлена!`);
+            } else {
+                showToast('Ошибка: ' + (data.error || 'Не удалось обновить'), true);
+            }
+        } catch (e) {
+            showToast('Ошибка связи: ' + e, true);
+        }
+    }
+
+    async function refreshAllSubscriptionsWeb() {
+        showToast('Обновление всех подписок с серверов...');
+        try {
+            const res = await fetch('/menu.php?action=refresh_all_subscriptions');
+            const data = await res.json();
+            if (data.success) {
+                vpnServers = data.servers || [];
+                renderHappServers();
+                await loadVpnStatus();
+                showToast(data.message || 'Все подписки успешно обновлены!');
             } else {
                 showToast('Ошибка: ' + (data.error || 'Не удалось обновить'), true);
             }
