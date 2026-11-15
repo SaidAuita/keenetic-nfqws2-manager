@@ -119,7 +119,7 @@
                         android:id="@+id/tvDuneKuhIp"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="IP: 192.168.1.145"
+                        android:text="IP: 192.168.1.29"
                         android:textColor="@color/text_muted"
                         android:textSize="12sp" />
                 </LinearLayout>

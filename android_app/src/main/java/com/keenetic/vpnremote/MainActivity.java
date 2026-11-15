@@ -184,7 +184,7 @@ public class MainActivity extends Activity {
         containerOtherDevices.removeAllViews();
 
         for (ApiClient.DeviceInfo dev : result.devices) {
-            if ("dune_kuh".equals(dev.id) || "192.168.1.145".equals(dev.ip)) {
+            if ("dune_kuh".equals(dev.id) || "192.168.1.29".equals(dev.ip) || "192.168.1.145".equals(dev.ip)) {
                 renderDeviceCard(dev, tvDuneKuhTitle, tvDuneKuhIp, tvDuneKuhServer, badgeDuneKuh,
                         btnKuhSmart, btnKuhFull, btnKuhOff);
             } else if ("dune_komnata".equals(dev.id) || "192.168.1.53".equals(dev.ip)) {

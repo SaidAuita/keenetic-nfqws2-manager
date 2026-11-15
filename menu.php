@@ -69,10 +69,10 @@ function syncVpnRouting($devices, $servers) {
         $mode = $d['mode'] ?? (!empty($d['enabled']) ? 'smart' : 'off');
         if ($mode !== 'off') {
             $enabledIps[] = $ip;
-            if ($ip === '192.168.1.145') @touch('/opt/etc/xray/dune_kuh.enabled');
+            if ($ip === '192.168.1.29' || $ip === '192.168.1.145') @touch('/opt/etc/xray/dune_kuh.enabled');
             if ($ip === '192.168.1.53')  @touch('/opt/etc/xray/dune_komnata.enabled');
         } else {
-            if ($ip === '192.168.1.145') @unlink('/opt/etc/xray/dune_kuh.enabled');
+            if ($ip === '192.168.1.29' || $ip === '192.168.1.145') @unlink('/opt/etc/xray/dune_kuh.enabled');
             if ($ip === '192.168.1.53')  @unlink('/opt/etc/xray/dune_komnata.enabled');
         }
     }
@@ -155,6 +155,8 @@ function syncVpnRouting($devices, $servers) {
         "domain:ytimg.com",
         "domain:ggpht.com",
         "domain:gvt1.com",
+        "domain:gvt2.com",
+        "domain:video.google.com",
         "domain:youtubei.googleapis.com",
         "domain:yt3.ggpht.com",
         "domain:yt4.ggpht.com",
@@ -162,7 +164,8 @@ function syncVpnRouting($devices, $servers) {
         "domain:youtube-nocookie.com",
         "domain:youtubekids.com",
         "domain:jnn-pa.googleapis.com",
-        "domain:play.google.com"
+        "domain:play.google.com",
+        "domain:widevine.com"
     ];
 
     // Build routing rules for each active device

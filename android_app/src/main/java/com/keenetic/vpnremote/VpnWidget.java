@@ -41,7 +41,7 @@ public class VpnWidget extends AppWidgetProvider {
                 ApiClient.StatusResult status = ApiClient.fetchStatus(context);
                 if (status.success) {
                     for (ApiClient.DeviceInfo dev : status.devices) {
-                        if (deviceId.equals(dev.id) || (deviceId.contains("kuh") && dev.ip.endsWith(".145"))
+                        if (deviceId.equals(dev.id) || (deviceId.contains("kuh") && (dev.ip.endsWith(".29") || dev.ip.endsWith(".145")))
                                 || (deviceId.contains("komnata") && dev.ip.endsWith(".53"))) {
                             // If enabled (smart or full) -> turn off
                             // If off -> turn on in "smart" mode (YouTube VPN + Russian direct)
@@ -87,7 +87,7 @@ public class VpnWidget extends AppWidgetProvider {
 
         if (status != null && status.success) {
             for (ApiClient.DeviceInfo dev : status.devices) {
-                if ("dune_kuh".equals(dev.id) || "192.168.1.145".equals(dev.ip)) {
+                if ("dune_kuh".equals(dev.id) || "192.168.1.29".equals(dev.ip) || "192.168.1.145".equals(dev.ip)) {
                     kuhMode = dev.mode != null ? dev.mode : (dev.enabled ? "smart" : "off");
                 } else if ("dune_komnata".equals(dev.id) || "192.168.1.53".equals(dev.ip)) {
                     komnataMode = dev.mode != null ? dev.mode : (dev.enabled ? "smart" : "off");
