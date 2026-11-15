@@ -26,17 +26,19 @@ public class ApiClient {
         public String ip;
         public String icon;
         public String serverName;
+        public String mode; // "smart", "full", "off"
         public boolean enabled;
         public boolean iptablesActive;
 
-        public DeviceInfo(String id, String name, String ip, String icon, String serverName, boolean enabled) {
+        public DeviceInfo(String id, String name, String ip, String icon, String serverName, String mode, boolean enabled) {
             this.id = id;
             this.name = name;
             this.ip = ip;
             this.icon = icon != null && !icon.isEmpty() ? icon : "📺";
             this.serverName = serverName != null ? serverName : "VLESS Reality";
-            this.enabled = enabled;
-            this.iptablesActive = enabled;
+            this.mode = mode != null ? mode : (enabled ? "smart" : "off");
+            this.enabled = !"off".equals(this.mode);
+            this.iptablesActive = this.enabled;
         }
     }
 
@@ -112,13 +114,16 @@ public class ApiClient {
             if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject d = arr.getJSONObject(i);
+                    boolean enabled = d.optBoolean("enabled", false);
+                    String mode = d.optString("mode", enabled ? "smart" : "off");
                     DeviceInfo dev = new DeviceInfo(
                             d.optString("id"),
                             d.optString("name"),
                             d.optString("ip"),
                             d.optString("icon", "📺"),
                             d.optString("server_name", "VLESS Reality"),
-                            d.optBoolean("enabled", false)
+                            mode,
+                            enabled
                     );
                     dev.iptablesActive = d.optBoolean("iptables_active", dev.enabled);
                     res.devices.add(dev);
@@ -131,10 +136,10 @@ public class ApiClient {
         return res;
     }
 
-    public static boolean toggleDevice(Context context, String deviceId, boolean enable) {
+    public static boolean setDeviceMode(Context context, String deviceId, String mode) {
         try {
-            String postData = "action=toggle_vpn_device&id=" + URLEncoder.encode(deviceId, "UTF-8")
-                    + "&enable=" + (enable ? "1" : "0");
+            String postData = "action=set_device_vpn_mode&id=" + URLEncoder.encode(deviceId, "UTF-8")
+                    + "&mode=" + URLEncoder.encode(mode, "UTF-8");
             String jsonStr = post(context, postData);
             JSONObject obj = new JSONObject(jsonStr);
             return obj.optBoolean("success", false);
@@ -143,9 +148,14 @@ public class ApiClient {
         }
     }
 
-    public static boolean toggleAll(Context context, boolean enable) {
+    public static boolean toggleDevice(Context context, String deviceId, boolean enable) {
+        return setDeviceMode(context, deviceId, enable ? "smart" : "off");
+    }
+
+    public static boolean toggleAll(Context context, boolean enable, String mode) {
         try {
-            String postData = "action=toggle_all_vpn&enable=" + (enable ? "1" : "0");
+            String postData = "action=toggle_all_vpn&enable=" + (enable ? "1" : "0")
+                    + (mode != null && !mode.isEmpty() ? "&mode=" + URLEncoder.encode(mode, "UTF-8") : "");
             String jsonStr = post(context, postData);
             JSONObject obj = new JSONObject(jsonStr);
             if (obj.optBoolean("success", false)) {
@@ -153,17 +163,15 @@ public class ApiClient {
             }
         } catch (Exception ignored) {}
 
-        // Fallback to iterating devices if batch action is not supported
+        // Fallback
         StatusResult status = fetchStatus(context);
         if (!status.success || status.devices.isEmpty()) {
             return false;
         }
         boolean allOk = true;
         for (DeviceInfo dev : status.devices) {
-            if (dev.enabled != enable) {
-                boolean ok = toggleDevice(context, dev.id, enable);
-                if (!ok) allOk = false;
-            }
+            boolean ok = setDeviceMode(context, dev.id, enable ? (mode != null ? mode : "smart") : "off");
+            if (!ok) allOk = false;
         }
         return allOk;
     }

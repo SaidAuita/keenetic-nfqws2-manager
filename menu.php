@@ -59,14 +59,15 @@ function saveStrategyArchive($list) {
 function syncVpnRouting($devices, $servers) {
     @mkdir(XRAY_DIR, 0755, true);
     
-    // 1. Gather enabled IPs and sync legacy flag files for compatibility
+    // 1. Gather active IPs and sync legacy flag files for compatibility
     $enabledIps = [];
     $devMap = [];
     foreach ($devices as $d) {
         $devMap[$d['id']] = $d;
         $ip = $d['ip'] ?? '';
         if (!$ip) continue;
-        if (!empty($d['enabled'])) {
+        $mode = $d['mode'] ?? (!empty($d['enabled']) ? 'smart' : 'off');
+        if ($mode !== 'off') {
             $enabledIps[] = $ip;
             if ($ip === '192.168.1.145') @touch('/opt/etc/xray/dune_kuh.enabled');
             if ($ip === '192.168.1.53')  @touch('/opt/etc/xray/dune_komnata.enabled');
@@ -146,21 +147,58 @@ function syncVpnRouting($devices, $servers) {
     }
     $outbounds[] = ["tag" => "direct", "protocol" => "freedom"];
 
+    // Domains for Smart Selective YouTube VPN mode
+    $youtubeDomains = [
+        "domain:googlevideo.com",
+        "domain:youtube.com",
+        "domain:youtu.be",
+        "domain:ytimg.com",
+        "domain:ggpht.com",
+        "domain:gvt1.com",
+        "domain:youtubei.googleapis.com",
+        "domain:yt3.ggpht.com",
+        "domain:yt4.ggpht.com",
+        "domain:ytimg.l.google.com",
+        "domain:youtube-nocookie.com",
+        "domain:youtubekids.com",
+        "domain:jnn-pa.googleapis.com",
+        "domain:play.google.com"
+    ];
+
     // Build routing rules for each active device
     $rules = [];
     foreach ($devices as $d) {
-        if (!empty($d['enabled']) && !empty($d['ip'])) {
+        $mode = $d['mode'] ?? (!empty($d['enabled']) ? 'smart' : 'off');
+        if ($mode !== 'off' && !empty($d['ip'])) {
             $srvId = $d['server'] ?? '';
             if (!isset($serverMap[$srvId])) {
                 $srvId = $servers[0]['id'] ?? '';
             }
             if ($srvId) {
-                $rules[] = [
-                    "type" => "field",
-                    "inboundTag" => ["transparent"],
-                    "source" => [$d['ip']],
-                    "outboundTag" => "proxy_" . $srvId
-                ];
+                if ($mode === 'smart') {
+                    // Smart YouTube mode: route YouTube domains to proxy, other traffic for this IP direct
+                    $rules[] = [
+                        "type" => "field",
+                        "inboundTag" => ["transparent"],
+                        "source" => [$d['ip']],
+                        "domain" => $youtubeDomains,
+                        "outboundTag" => "proxy_" . $srvId
+                    ];
+                    $rules[] = [
+                        "type" => "field",
+                        "inboundTag" => ["transparent"],
+                        "source" => [$d['ip']],
+                        "outboundTag" => "direct"
+                    ];
+                } else {
+                    // Full mode: all traffic from this IP goes to proxy
+                    $rules[] = [
+                        "type" => "field",
+                        "inboundTag" => ["transparent"],
+                        "source" => [$d['ip']],
+                        "outboundTag" => "proxy_" . $srvId
+                    ];
+                }
             }
         }
     }
@@ -208,7 +246,8 @@ function syncVpnRouting($devices, $servers) {
     foreach ($devices as $d) {
         $ip = $d['ip'] ?? '';
         if (!$ip) continue;
-        if (!empty($d['enabled'])) {
+        $mode = $d['mode'] ?? (!empty($d['enabled']) ? 'smart' : 'off');
+        if ($mode !== 'off') {
             exec("iptables -t nat -C PREROUTING -s $ip -j DUNE_VPN 2>/dev/null || iptables -t nat -I PREROUTING -s $ip -j DUNE_VPN");
         } else {
             exec("while iptables -t nat -D PREROUTING -s $ip -j DUNE_VPN 2>/dev/null; do :; done");
@@ -429,19 +468,21 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         // Check real iptables rule for each device and self-heal
         foreach ($devices as &$d) {
             $ip = $d['ip'] ?? '';
-            $confEnabled = !empty($d['enabled']);
+            $mode = $d['mode'] ?? (!empty($d['enabled']) ? 'smart' : 'off');
+            $confEnabled = ($mode !== 'off');
             $iptablesOk = false;
             if ($ip) {
                 exec("iptables -t nat -C PREROUTING -s $ip -j DUNE_VPN 2>/dev/null && echo 1 || echo 0", $chkOut);
                 $iptablesOk = ($chkOut[0] ?? '0') === '1';
                 unset($chkOut);
 
-                // Self-heal: If configured enabled but missing in iptables, restore immediately
+                // Self-heal: If configured active but missing in iptables, restore immediately
                 if ($confEnabled && !$iptablesOk) {
                     exec("iptables -t nat -C PREROUTING -s $ip -j DUNE_VPN 2>/dev/null || iptables -t nat -I PREROUTING -s $ip -j DUNE_VPN");
                     $iptablesOk = true;
                 }
             }
+            $d['mode'] = $mode;
             $d['enabled'] = $confEnabled;
             $d['iptables_active'] = $iptablesOk;
             $sid = $d['server'] ?? ($servers[0]['id'] ?? '');
@@ -547,6 +588,34 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         exit;
     }
 
+    if ($action === 'set_device_vpn_mode') {
+        $id = trim($_REQUEST['id'] ?? '');
+        $mode = trim($_REQUEST['mode'] ?? 'smart');
+        if (!in_array($mode, ['smart', 'full', 'off'])) {
+            $mode = 'smart';
+        }
+
+        $devices = loadVpnDevices();
+        $servers = loadVpnServers();
+
+        $targetIp = '';
+        foreach ($devices as &$d) {
+            if ($d['id'] === $id) {
+                $d['mode'] = $mode;
+                $d['enabled'] = ($mode !== 'off');
+                $targetIp = $d['ip'];
+                break;
+            }
+        }
+        unset($d);
+
+        saveVpnDevices($devices);
+        syncVpnRouting($devices, $servers);
+
+        echo json_encode(['success' => true, 'id' => $id, 'mode' => $mode, 'enabled' => ($mode !== 'off'), 'ip' => $targetIp]);
+        exit;
+    }
+
     if ($action === 'toggle_vpn_device') {
         $id = trim($_REQUEST['id'] ?? '');
         $enable = (int)($_REQUEST['enable'] ?? 0) === 1;
@@ -555,8 +624,16 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         $servers = loadVpnServers();
 
         $targetIp = '';
+        $newMode = 'off';
         foreach ($devices as &$d) {
             if ($d['id'] === $id) {
+                $currentMode = $d['mode'] ?? (!empty($d['enabled']) ? 'smart' : 'off');
+                if ($enable) {
+                    $newMode = ($currentMode !== 'off') ? $currentMode : 'smart';
+                } else {
+                    $newMode = 'off';
+                }
+                $d['mode'] = $newMode;
                 $d['enabled'] = $enable;
                 $targetIp = $d['ip'];
                 break;
@@ -567,17 +644,20 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         saveVpnDevices($devices);
         syncVpnRouting($devices, $servers);
 
-        echo json_encode(['success' => true, 'id' => $id, 'enabled' => $enable, 'ip' => $targetIp]);
+        echo json_encode(['success' => true, 'id' => $id, 'mode' => $newMode, 'enabled' => $enable, 'ip' => $targetIp]);
         exit;
     }
 
     if ($action === 'toggle_all_vpn') {
         $enable = (int)($_REQUEST['enable'] ?? 0) === 1;
+        $reqMode = trim($_REQUEST['mode'] ?? '');
+        $targetMode = $enable ? ($reqMode ?: 'smart') : 'off';
 
         $devices = loadVpnDevices();
         $servers = loadVpnServers();
 
         foreach ($devices as &$d) {
+            $d['mode'] = $targetMode;
             $d['enabled'] = $enable;
         }
         unset($d);
@@ -585,7 +665,7 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         saveVpnDevices($devices);
         syncVpnRouting($devices, $servers);
 
-        echo json_encode(['success' => true, 'enabled' => $enable, 'devices' => $devices]);
+        echo json_encode(['success' => true, 'enabled' => $enable, 'mode' => $targetMode, 'devices' => $devices]);
         exit;
     }
 
@@ -2410,6 +2490,61 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
             cursor: wait;
         }
 
+        /* Mode Selector Pills */
+        .vpn-mode-selector {
+            display: flex;
+            gap: 4px;
+            background: rgba(15, 23, 42, 0.65);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            margin-top: 6px;
+        }
+
+        .vpn-mode-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 8px 6px;
+            font-size: 11px;
+            font-weight: 700;
+            border: 1px solid transparent;
+            border-radius: 7px;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .vpn-mode-btn:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-primary);
+        }
+
+        .vpn-mode-btn.active-smart {
+            background: linear-gradient(135deg, #064e3b, #047857) !important;
+            color: #34d399 !important;
+            border: 1px solid #10b981 !important;
+            box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35) !important;
+        }
+
+        .vpn-mode-btn.active-full {
+            background: linear-gradient(135deg, #2e1065, #4338ca) !important;
+            color: #c084fc !important;
+            border: 1px solid #8b5cf6 !important;
+            box-shadow: 0 2px 10px rgba(139, 92, 246, 0.35) !important;
+        }
+
+        .vpn-mode-btn.active-off {
+            background: rgba(51, 65, 85, 0.7) !important;
+            color: #f1f5f9 !important;
+            border: 1px solid rgba(148, 163, 184, 0.4) !important;
+        }
+
         /* Pulse animation for active VPN badge */
         @keyframes vpnPulse {
             0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
@@ -3180,12 +3315,15 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
                     </div>
                 </div>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
-                <button class="btn btn-sm btn-outline" onclick="toggleAllVpn(1)" style="font-size: 11px; padding: 6px 14px;">
-                    ⚡ Включить VPN на всех
+            <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
+                <button class="btn btn-sm btn-outline" onclick="toggleAllVpn(1, 'smart')" style="font-size: 11px; padding: 6px 14px; border-color: rgba(16, 185, 129, 0.4); color: #34d399;">
+                    🎯 «Умный YouTube» на всех
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="toggleAllVpn(1, 'full')" style="font-size: 11px; padding: 6px 14px; border-color: rgba(139, 92, 246, 0.4); color: #c084fc;">
+                    🛡️ «Полный VPN» на всех
                 </button>
                 <button class="btn btn-sm btn-outline" onclick="toggleAllVpn(0)" style="font-size: 11px; padding: 6px 14px; color: var(--text-muted);">
-                    ⏹️ Выключить VPN на всех
+                    ⏹️ Выключить на всех
                 </button>
             </div>
         </div>
@@ -3841,11 +3979,16 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
 
         let html = '';
         vpnDevices.forEach(d => {
-            const isAct = Boolean(d.enabled);
+            const mode = d.mode || (d.enabled ? 'smart' : 'off');
+            const isAct = (mode !== 'off');
             const cardClass = isAct ? 'vpn-card vpn-active' : 'vpn-card';
-            const statusBadge = isAct 
-                ? '<span class="badge badge-success vpn-badge-pulse">🟢 VPN ВКЛЮЧЕН</span>' 
-                : '<span class="badge badge-secondary">⚪ ПРЯМОЙ ДОСТУП</span>';
+            
+            let statusBadge = '<span class="badge badge-secondary">⚪ ПРЯМОЙ ДОСТУП</span>';
+            if (mode === 'smart') {
+                statusBadge = '<span class="badge badge-success vpn-badge-pulse" style="background:#064e3b; color:#34d399; border:1px solid #10b981;">🎯 УМНЫЙ YOUTUBE</span>';
+            } else if (mode === 'full') {
+                statusBadge = '<span class="badge badge-purple vpn-badge-pulse" style="background:#2e1065; color:#c084fc; border:1px solid #8b5cf6;">🛡️ ПОЛНЫЙ VPN</span>';
+            }
 
             // Server select options grouped by provider
             const grouped = {};
@@ -3865,13 +4008,15 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
                 optsHtml += `</optgroup>`;
             }
 
-            const routeText = isAct 
-                ? `🛡️ [${d.server_group || 'VPN'}] ${d.server_name || 'VLESS Reality'}`
-                : 'Провайдер напрямую (без VPN)';
-            const routeColor = isAct ? '#34d399' : 'var(--text-secondary)';
-
-            const btnText = isAct ? '🟢 VPN ВКЛЮЧЕН · Отключить' : '🚀 Включить VPN';
-            const btnClass = isAct ? 'btn btn-vpn-toggle btn-vpn-active' : 'btn btn-vpn-toggle btn-vpn-inactive';
+            let routeText = 'Провайдер напрямую (без VPN)';
+            let routeColor = 'var(--text-secondary)';
+            if (mode === 'smart') {
+                routeText = `🎯 YouTube ➔ [${d.server_name || 'VPN'}], Кинопоиск/ТВ ➔ Напрямую`;
+                routeColor = '#34d399';
+            } else if (mode === 'full') {
+                routeText = `🛡️ Весь трафик ➔ [${d.server_name || 'VPN'}]`;
+                routeColor = '#c084fc';
+            }
 
             html += `
                 <div class="${cardClass}" id="vpn-card-${d.id}">
@@ -3886,22 +4031,35 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
                         ${statusBadge}
                     </div>
                     <div class="vpn-card-body">
+                        <!-- Mode Selector Pills -->
+                        <div style="margin-bottom: 12px;">
+                            <label class="vpn-field-label" style="display:block; margin-bottom:6px;">Режим работы устройства:</label>
+                            <div class="vpn-mode-selector">
+                                <button type="button" class="vpn-mode-btn ${mode === 'smart' ? 'active-smart' : ''}" onclick="setDeviceMode('${d.id}', 'smart')" title="Только YouTube через VPN (Кинопоиск, Иви, ТВ идут напрямую через провайдера)">
+                                    🎯 Умный YouTube
+                                </button>
+                                <button type="button" class="vpn-mode-btn ${mode === 'full' ? 'active-full' : ''}" onclick="setDeviceMode('${d.id}', 'full')" title="Весь трафик приставки идёт через VPN">
+                                    🛡️ Полный VPN
+                                </button>
+                                <button type="button" class="vpn-mode-btn ${mode === 'off' ? 'active-off' : ''}" onclick="setDeviceMode('${d.id}', 'off')" title="Отключить VPN, весь трафик идёт напрямую">
+                                    ⚪ Выкл
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="vpn-server-field">
                             <label class="vpn-field-label">🌍 Сервер VPN для этого устройства:</label>
                             <select class="vpn-card-select" onchange="changeDeviceServer('${d.id}', this.value)">
                                 ${optsHtml}
                             </select>
                         </div>
-                        <div class="vpn-route-info">
+                        <div class="vpn-route-info" style="font-size:11px; margin-top:8px;">
                             <span>Маршрут:</span>
                             <span class="vpn-route-val" style="color: ${routeColor};">${routeText}</span>
                         </div>
-                        <div class="vpn-card-actions">
-                            <button class="${btnClass}" id="btn-toggle-${d.id}" onclick="toggleVpnDevice('${d.id}')">
-                                ${btnText}
-                            </button>
-                            <button class="btn-vpn-del" onclick="removeDevice('${d.id}')" title="Удалить устройство из списка">
-                                🗑️
+                        <div class="vpn-card-actions" style="margin-top:12px;">
+                            <button class="btn-vpn-del" onclick="removeDevice('${d.id}')" title="Удалить устройство из списка" style="margin-left:auto;">
+                                🗑️ Удалить
                             </button>
                         </div>
                     </div>
@@ -3928,16 +4086,22 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
 
         if (activeVpn.length > 0) {
             banner.className = 'top-mode-banner mode-vpn';
-            if (iconEl) iconEl.textContent = '🚀';
-            if (labelEl) labelEl.textContent = 'АКТИВНЫЙ РЕЖИМ: ПЕРСОНАЛЬНЫЙ VPN ТУННЕЛЬ';
-            const devNames = activeVpn.map(d => `${d.icon || '📺'} ${d.name}`).join(', ');
-            if (titleEl) titleEl.textContent = 'VPN ТУННЕЛЬ АКТИВЕН';
-            if (subEl) subEl.textContent = `Трафик через VPN для: ${devNames} (остальные устройства — через прямой обход)`;
+            const smartCount = activeVpn.filter(d => d.mode === 'smart').length;
+            const fullCount = activeVpn.filter(d => d.mode === 'full').length;
+
+            if (iconEl) iconEl.textContent = smartCount > 0 ? '🎯' : '🚀';
+            if (labelEl) labelEl.textContent = smartCount > 0 
+                ? 'АКТИВНЫЙ РЕЖИМ: ИЗБИРАТЕЛЬНЫЙ VPN ДЛЯ YOUTUBE' 
+                : 'АКТИВНЫЙ РЕЖИМ: ПЕРСОНАЛЬНЫЙ VPN ТУННЕЛЬ';
+
+            const devSummary = activeVpn.map(d => `${d.icon || '📺'} ${d.name} (${d.mode === 'smart' ? 'YouTube' : 'Весь'})`).join(', ');
+            if (titleEl) titleEl.textContent = smartCount > 0 ? '🎯 УМНЫЙ РОУТИНГ YOUTUBE АКТИВЕН' : '🛡️ ПОЛНЫЙ VPN ТУННЕЛЬ АКТИВЕН';
+            if (subEl) subEl.textContent = `Маршрутизация: ${devSummary} (остальные устройства и сервисы — напрямую через Beeline)`;
             if (badgeEl) {
-                badgeEl.className = 'badge badge-purple vpn-badge-pulse';
+                badgeEl.className = smartCount > 0 ? 'badge badge-success vpn-badge-pulse' : 'badge badge-purple vpn-badge-pulse';
                 badgeEl.style.fontSize = '13px';
                 badgeEl.style.padding = '6px 14px';
-                badgeEl.textContent = `🟢 VPN: ${activeVpn.length} устр.`;
+                badgeEl.textContent = smartCount > 0 ? `🎯 Умный: ${activeVpn.length} устр.` : `🛡️ VPN: ${activeVpn.length} устр.`;
             }
         } else {
             banner.className = 'top-mode-banner mode-direct';
@@ -3951,6 +4115,29 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
                 badgeEl.style.padding = '6px 14px';
                 badgeEl.textContent = '🟢 ПРЯМОЙ ОБХОД';
             }
+        }
+    }
+
+    async function setDeviceMode(id, mode) {
+        const modeNames = { 'smart': 'Умный YouTube', 'full': 'Полный VPN', 'off': 'Прямой доступ' };
+        showToast(`Переключение режима: ${modeNames[mode] || mode}...`);
+
+        try {
+            const fd = new FormData();
+            fd.append('action', 'set_device_vpn_mode');
+            fd.append('id', id);
+            fd.append('mode', mode);
+
+            const res = await fetch('menu.php', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success) {
+                showToast(`Режим установлен: ${modeNames[mode] || mode}`);
+                await loadVpnStatus();
+            } else {
+                showToast('Ошибка: ' + (data.error || 'Сбой смены режима'), true);
+            }
+        } catch (e) {
+            showToast('Ошибка связи с роутером: ' + e, true);
         }
     }
 
@@ -4896,17 +5083,20 @@ $isInitialVpnActive = count($initialActiveVpnList) > 0;
         });
     }
 
-    async function toggleAllVpn(enable) {
-        showToast(enable ? 'Включение VPN на всех приставках...' : 'Выключение VPN на всех приставках...');
+    async function toggleAllVpn(enable, mode = '') {
+        const targetMode = enable ? (mode || 'smart') : 'off';
+        const modeLabel = targetMode === 'smart' ? '«Умный YouTube»' : (targetMode === 'full' ? '«Полный VPN»' : '«Прямой интернет»');
+        showToast(`Переключение всех приставок на ${modeLabel}...`);
         try {
             const fd = new FormData();
             fd.append('action', 'toggle_all_vpn');
             fd.append('enable', enable ? '1' : '0');
+            if (mode) fd.append('mode', mode);
             const res = await fetch('menu.php', { method: 'POST', body: fd });
             const data = await res.json();
             if (data.success) {
-                showToast(enable ? 'VPN включен на всех приставках' : 'VPN выключен на всех приставках');
-                loadVpnStatus();
+                showToast(`Все приставки переведены на ${modeLabel}`);
+                await loadVpnStatus();
             } else {
                 showToast('Ошибка: ' + (data.error || 'Сбой переключения'), true);
             }

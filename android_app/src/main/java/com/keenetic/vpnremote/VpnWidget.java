@@ -41,8 +41,12 @@ public class VpnWidget extends AppWidgetProvider {
                 ApiClient.StatusResult status = ApiClient.fetchStatus(context);
                 if (status.success) {
                     for (ApiClient.DeviceInfo dev : status.devices) {
-                        if (deviceId.equals(dev.id)) {
-                            ApiClient.toggleDevice(context, dev.id, !dev.enabled);
+                        if (deviceId.equals(dev.id) || (deviceId.contains("kuh") && dev.ip.endsWith(".145"))
+                                || (deviceId.contains("komnata") && dev.ip.endsWith(".53"))) {
+                            // If enabled (smart or full) -> turn off
+                            // If off -> turn on in "smart" mode (YouTube VPN + Russian direct)
+                            String targetMode = "off".equals(dev.mode) ? "smart" : "off";
+                            ApiClient.setDeviceMode(context, dev.id, targetMode);
                             break;
                         }
                     }
@@ -78,21 +82,21 @@ public class VpnWidget extends AppWidgetProvider {
     private void updateWidgetView(Context context, AppWidgetManager manager, int widgetId, ApiClient.StatusResult status) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_layout);
 
-        boolean kuhOn = false;
-        boolean komnataOn = false;
+        String kuhMode = "off";
+        String komnataMode = "off";
 
         if (status != null && status.success) {
             for (ApiClient.DeviceInfo dev : status.devices) {
                 if ("dune_kuh".equals(dev.id) || "192.168.1.145".equals(dev.ip)) {
-                    kuhOn = dev.enabled;
+                    kuhMode = dev.mode != null ? dev.mode : (dev.enabled ? "smart" : "off");
                 } else if ("dune_komnata".equals(dev.id) || "192.168.1.53".equals(dev.ip)) {
-                    komnataOn = dev.enabled;
+                    komnataMode = dev.mode != null ? dev.mode : (dev.enabled ? "smart" : "off");
                 }
             }
         }
 
-        views.setTextViewText(R.id.widgetTextKuhState, kuhOn ? "🟢 VPN ВКЛ" : "⚪ БЕЗ VPN");
-        views.setTextViewText(R.id.widgetTextKomnataState, komnataOn ? "🟢 VPN ВКЛ" : "⚪ БЕЗ VPN");
+        views.setTextViewText(R.id.widgetTextKuhState, formatWidgetMode(kuhMode));
+        views.setTextViewText(R.id.widgetTextKomnataState, formatWidgetMode(komnataMode));
 
         Intent intentKuh = new Intent(context, VpnWidget.class);
         intentKuh.setAction(ACTION_TOGGLE_KUH);
@@ -105,5 +109,15 @@ public class VpnWidget extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.widgetBtnKomnata, piKomnata);
 
         manager.updateAppWidget(widgetId, views);
+    }
+
+    private String formatWidgetMode(String mode) {
+        if ("smart".equals(mode)) {
+            return "🎯 Умный (YT)";
+        } else if ("full".equals(mode)) {
+            return "🛡️ Полный VPN";
+        } else {
+            return "⚪ БЕЗ VPN";
+        }
     }
 }

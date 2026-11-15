@@ -17,7 +17,7 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="24dp">
+            android:layout_marginBottom="20dp">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -31,34 +31,34 @@
                     android:layout_height="wrap_content"
                     android:text="🛡️ Keenetic VPN"
                     android:textColor="@color/text_main"
-                    android:textSize="24sp"
+                    android:textSize="22sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/tvSubtitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="1-кнопочный пульт для Smart TV"
+                    android:text="Пульт для Dune HD Smart TV"
                     android:textColor="@color/text_muted"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
                     android:layout_marginTop="2dp" />
             </LinearLayout>
 
             <Button
                 android:id="@+id/btnSettings"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:text="⚙️"
-                android:textSize="18sp"
+                android:textSize="16sp"
                 android:background="@drawable/btn_gray"
                 android:textColor="@color/text_main" />
 
             <Button
                 android:id="@+id/btnRefresh"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:text="🔄"
-                android:textSize="18sp"
+                android:textSize="16sp"
                 android:background="@drawable/btn_gray"
                 android:textColor="@color/text_main"
                 android:layout_marginStart="8dp" />
@@ -83,7 +83,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_bg"
-            android:padding="18dp"
+            android:padding="16dp"
             android:layout_marginBottom="16dp">
 
             <LinearLayout
@@ -91,14 +91,14 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginBottom="10dp">
+                android:layout_marginBottom="8dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="📺"
-                    android:textSize="26sp"
-                    android:layout_marginEnd="12dp" />
+                    android:textSize="24sp"
+                    android:layout_marginEnd="10dp" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -112,7 +112,7 @@
                         android:layout_height="wrap_content"
                         android:text="Dune HD (Кухня)"
                         android:textColor="@color/text_main"
-                        android:textSize="18sp"
+                        android:textSize="17sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -121,18 +121,18 @@
                         android:layout_height="wrap_content"
                         android:text="IP: 192.168.1.145"
                         android:textColor="@color/text_muted"
-                        android:textSize="13sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/badgeDuneKuh"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="ПРЯМОЕ"
+                    android:text="ВЫКЛ"
                     android:textColor="@color/btn_off_text"
                     android:background="@drawable/badge_gray"
                     android:paddingHorizontal="10dp"
-                    android:paddingVertical="5dp"
+                    android:paddingVertical="4dp"
                     android:textSize="11sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -141,20 +141,51 @@
                 android:id="@+id/tvDuneKuhServer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Сервер: VLESS Reality (BG/NL)"
+                android:text="Сервер: VLESS Reality"
                 android:textColor="@color/text_muted"
                 android:textSize="12sp"
-                android:layout_marginBottom="14dp" />
+                android:layout_marginBottom="12dp" />
 
-            <Button
-                android:id="@+id/btnToggleDuneKuh"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:text="ВКЛЮЧИТЬ VPN"
-                android:textSize="15sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_main"
-                android:background="@drawable/btn_gray" />
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnKuhSmart"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1.2"
+                    android:text="🎯 Умный (YT)"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_main"
+                    android:background="@drawable/btn_gray"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnKuhFull"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="🛡️ Полный"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_main"
+                    android:background="@drawable/btn_gray"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnKuhOff"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="0.8"
+                    android:text="⚪ Выкл"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/btn_off_text"
+                    android:background="@drawable/btn_gray" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- DEVICE 2 CARD: DUNE КОМНАТА -->
@@ -164,22 +195,22 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_bg"
-            android:padding="18dp"
-            android:layout_marginBottom="24dp">
+            android:padding="16dp"
+            android:layout_marginBottom="20dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginBottom="10dp">
+                android:layout_marginBottom="8dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="📺"
-                    android:textSize="26sp"
-                    android:layout_marginEnd="12dp" />
+                    android:textSize="24sp"
+                    android:layout_marginEnd="10dp" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -193,7 +224,7 @@
                         android:layout_height="wrap_content"
                         android:text="Dune HD (Комната)"
                         android:textColor="@color/text_main"
-                        android:textSize="18sp"
+                        android:textSize="17sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -202,18 +233,18 @@
                         android:layout_height="wrap_content"
                         android:text="IP: 192.168.1.53"
                         android:textColor="@color/text_muted"
-                        android:textSize="13sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/badgeDuneKomnata"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="ПРЯМОЕ"
+                    android:text="ВЫКЛ"
                     android:textColor="@color/btn_off_text"
                     android:background="@drawable/badge_gray"
                     android:paddingHorizontal="10dp"
-                    android:paddingVertical="5dp"
+                    android:paddingVertical="4dp"
                     android:textSize="11sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -222,20 +253,51 @@
                 android:id="@+id/tvDuneKomnataServer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Сервер: VLESS Reality (NL2)"
+                android:text="Сервер: VLESS Reality"
                 android:textColor="@color/text_muted"
                 android:textSize="12sp"
-                android:layout_marginBottom="14dp" />
+                android:layout_marginBottom="12dp" />
 
-            <Button
-                android:id="@+id/btnToggleDuneKomnata"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:text="ВКЛЮЧИТЬ VPN"
-                android:textSize="15sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_main"
-                android:background="@drawable/btn_gray" />
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnKomnataSmart"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1.2"
+                    android:text="🎯 Умный (YT)"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_main"
+                    android:background="@drawable/btn_gray"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnKomnataFull"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="🛡️ Полный"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_main"
+                    android:background="@drawable/btn_gray"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnKomnataOff"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="0.8"
+                    android:text="⚪ Выкл"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/btn_off_text"
+                    android:background="@drawable/btn_gray" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- DYNAMIC DEVICES CONTAINER (for other devices) -->
@@ -251,15 +313,15 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/card_bg"
-            android:padding="18dp"
-            android:layout_marginBottom="24dp">
+            android:padding="16dp"
+            android:layout_marginBottom="20dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="⚡ Быстрые действия"
+                android:text="⚡ Быстрые действия (все приставки)"
                 android:textColor="@color/text_main"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
@@ -269,24 +331,36 @@
                 android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/btnAllOn"
+                    android:id="@+id/btnAllSmart"
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:text="ВКЛ НА ОБЕИХ"
-                    android:textSize="13sp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1.2"
+                    android:text="🎯 Умный везде"
+                    android:textSize="11sp"
                     android:textStyle="bold"
                     android:textColor="@color/text_main"
                     android:background="@drawable/btn_green"
-                    android:layout_marginEnd="8dp" />
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnAllFull"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="🛡️ Полный везде"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_main"
+                    android:background="@drawable/btn_purple"
+                    android:layout_marginEnd="6dp" />
 
                 <Button
                     android:id="@+id/btnAllOff"
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:text="ВЫКЛ НА ОБЕИХ"
-                    android:textSize="13sp"
+                    android:layout_height="44dp"
+                    android:layout_weight="0.8"
+                    android:text="⚪ Выкл"
+                    android:textSize="11sp"
                     android:textStyle="bold"
                     android:textColor="@color/btn_off_text"
                     android:background="@drawable/btn_gray" />
@@ -297,12 +371,12 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔒 Работает локально в домашней сети роутера Keenetic.\nВнешний доступ не требуется."
+            android:text="🔒 Работает локально в домашней сети роутера Keenetic.\n🎯 Умный режим: YouTube через VPN, Кинопоиск/Иви напрямую."
             android:textColor="@color/text_muted"
             android:textSize="12sp"
             android:gravity="center"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="20dp" />
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="16dp" />
 
     </LinearLayout>
 </ScrollView>

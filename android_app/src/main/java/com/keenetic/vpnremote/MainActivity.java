@@ -6,30 +6,30 @@ import android.content.Context;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Vibrator;
-import android.view.LayoutInflater;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.List;
-
 public class MainActivity extends Activity {
 
     private TextView tvConnectionStatus;
+
+    // Dune Кухня
     private TextView tvDuneKuhTitle, tvDuneKuhIp, tvDuneKuhServer, badgeDuneKuh;
-    private Button btnToggleDuneKuh;
+    private Button btnKuhSmart, btnKuhFull, btnKuhOff;
 
+    // Dune Комната
     private TextView tvDuneKomnataTitle, tvDuneKomnataIp, tvDuneKomnataServer, badgeDuneKomnata;
-    private Button btnToggleDuneKomnata;
+    private Button btnKomnataSmart, btnKomnataFull, btnKomnataOff;
 
+    // Container for other devices
     private LinearLayout containerOtherDevices;
-    private Button btnAllOn, btnAllOff, btnRefresh, btnSettings;
 
-    private ApiClient.DeviceInfo devKuh = null;
-    private ApiClient.DeviceInfo devKomnata = null;
+    // Batch & Top Controls
+    private Button btnAllSmart, btnAllFull, btnAllOff, btnRefresh, btnSettings;
+
     private Vibrator vibrator;
 
     @Override
@@ -45,17 +45,22 @@ public class MainActivity extends Activity {
         tvDuneKuhIp = findViewById(R.id.tvDuneKuhIp);
         tvDuneKuhServer = findViewById(R.id.tvDuneKuhServer);
         badgeDuneKuh = findViewById(R.id.badgeDuneKuh);
-        btnToggleDuneKuh = findViewById(R.id.btnToggleDuneKuh);
+        btnKuhSmart = findViewById(R.id.btnKuhSmart);
+        btnKuhFull = findViewById(R.id.btnKuhFull);
+        btnKuhOff = findViewById(R.id.btnKuhOff);
 
         tvDuneKomnataTitle = findViewById(R.id.tvDuneKomnataTitle);
         tvDuneKomnataIp = findViewById(R.id.tvDuneKomnataIp);
         tvDuneKomnataServer = findViewById(R.id.tvDuneKomnataServer);
         badgeDuneKomnata = findViewById(R.id.badgeDuneKomnata);
-        btnToggleDuneKomnata = findViewById(R.id.btnToggleDuneKomnata);
+        btnKomnataSmart = findViewById(R.id.btnKomnataSmart);
+        btnKomnataFull = findViewById(R.id.btnKomnataFull);
+        btnKomnataOff = findViewById(R.id.btnKomnataOff);
 
         containerOtherDevices = findViewById(R.id.containerOtherDevices);
 
-        btnAllOn = findViewById(R.id.btnAllOn);
+        btnAllSmart = findViewById(R.id.btnAllSmart);
+        btnAllFull = findViewById(R.id.btnAllFull);
         btnAllOff = findViewById(R.id.btnAllOff);
         btnRefresh = findViewById(R.id.btnRefresh);
         btnSettings = findViewById(R.id.btnSettings);
@@ -67,32 +72,46 @@ public class MainActivity extends Activity {
 
         btnSettings.setOnClickListener(v -> showSettingsDialog());
 
-        btnToggleDuneKuh.setOnClickListener(v -> {
+        // Kuh buttons
+        btnKuhSmart.setOnClickListener(v -> {
             vibrate();
-            if (devKuh != null) {
-                toggleDevice(devKuh, !devKuh.enabled);
-            } else {
-                toggleDeviceById("dune_kuh", true);
-            }
+            setDeviceMode("dune_kuh", "smart");
+        });
+        btnKuhFull.setOnClickListener(v -> {
+            vibrate();
+            setDeviceMode("dune_kuh", "full");
+        });
+        btnKuhOff.setOnClickListener(v -> {
+            vibrate();
+            setDeviceMode("dune_kuh", "off");
         });
 
-        btnToggleDuneKomnata.setOnClickListener(v -> {
+        // Komnata buttons
+        btnKomnataSmart.setOnClickListener(v -> {
             vibrate();
-            if (devKomnata != null) {
-                toggleDevice(devKomnata, !devKomnata.enabled);
-            } else {
-                toggleDeviceById("dune_komnata", true);
-            }
+            setDeviceMode("dune_komnata", "smart");
+        });
+        btnKomnataFull.setOnClickListener(v -> {
+            vibrate();
+            setDeviceMode("dune_komnata", "full");
+        });
+        btnKomnataOff.setOnClickListener(v -> {
+            vibrate();
+            setDeviceMode("dune_komnata", "off");
         });
 
-        btnAllOn.setOnClickListener(v -> {
+        // Batch buttons
+        btnAllSmart.setOnClickListener(v -> {
             vibrate();
-            toggleAllDevices(true);
+            toggleAllDevices("smart");
         });
-
+        btnAllFull.setOnClickListener(v -> {
+            vibrate();
+            toggleAllDevices("full");
+        });
         btnAllOff.setOnClickListener(v -> {
             vibrate();
-            toggleAllDevices(false);
+            toggleAllDevices("off");
         });
 
         loadStatus();
@@ -162,17 +181,15 @@ public class MainActivity extends Activity {
         tvConnectionStatus.setText("🟢 Роутер в сети • Xray " + (result.xrayRunning ? "работает" : "остановлен"));
         tvConnectionStatus.setTextColor(0xFF10B981);
 
-        devKuh = null;
-        devKomnata = null;
         containerOtherDevices.removeAllViews();
 
         for (ApiClient.DeviceInfo dev : result.devices) {
             if ("dune_kuh".equals(dev.id) || "192.168.1.145".equals(dev.ip)) {
-                devKuh = dev;
-                renderDeviceCard(dev, tvDuneKuhTitle, tvDuneKuhIp, tvDuneKuhServer, badgeDuneKuh, btnToggleDuneKuh);
+                renderDeviceCard(dev, tvDuneKuhTitle, tvDuneKuhIp, tvDuneKuhServer, badgeDuneKuh,
+                        btnKuhSmart, btnKuhFull, btnKuhOff);
             } else if ("dune_komnata".equals(dev.id) || "192.168.1.53".equals(dev.ip)) {
-                devKomnata = dev;
-                renderDeviceCard(dev, tvDuneKomnataTitle, tvDuneKomnataIp, tvDuneKomnataServer, badgeDuneKomnata, btnToggleDuneKomnata);
+                renderDeviceCard(dev, tvDuneKomnataTitle, tvDuneKomnataIp, tvDuneKomnataServer, badgeDuneKomnata,
+                        btnKomnataSmart, btnKomnataFull, btnKomnataOff);
             } else {
                 addOtherDeviceView(dev);
             }
@@ -180,25 +197,55 @@ public class MainActivity extends Activity {
     }
 
     private void renderDeviceCard(ApiClient.DeviceInfo dev, TextView tvTitle, TextView tvIp,
-                                  TextView tvServer, TextView badge, Button btn) {
+                                  TextView tvServer, TextView badge,
+                                  Button btnSmart, Button btnFull, Button btnOff) {
         tvTitle.setText(dev.icon + " " + dev.name);
         tvIp.setText("IP: " + dev.ip);
-        tvServer.setText("Сервер: " + dev.serverName);
 
-        if (dev.enabled) {
-            badge.setText("VPN АКТИВЕН");
+        String mode = dev.mode != null ? dev.mode : (dev.enabled ? "smart" : "off");
+
+        if ("smart".equals(mode)) {
+            badge.setText("🎯 УМНЫЙ (YT)");
             badge.setTextColor(0xFF10B981);
             badge.setBackgroundResource(R.drawable.badge_green);
+            tvServer.setText("🎯 YouTube через VPN • Кинопоиск/Иви напрямую\nСервер: " + dev.serverName);
 
-            btn.setText("ВЫКЛЮЧИТЬ VPN");
-            btn.setBackgroundResource(R.drawable.btn_red);
+            btnSmart.setBackgroundResource(R.drawable.btn_green);
+            btnSmart.setTextColor(0xFFFFFFFF);
+
+            btnFull.setBackgroundResource(R.drawable.btn_gray);
+            btnFull.setTextColor(0xFF94A3B8);
+
+            btnOff.setBackgroundResource(R.drawable.btn_gray);
+            btnOff.setTextColor(0xFF94A3B8);
+        } else if ("full".equals(mode)) {
+            badge.setText("🛡️ ПОЛНЫЙ VPN");
+            badge.setTextColor(0xFFC084FC);
+            badge.setBackgroundResource(R.drawable.badge_purple);
+            tvServer.setText("🛡️ Весь трафик приставки через VPN\nСервер: " + dev.serverName);
+
+            btnSmart.setBackgroundResource(R.drawable.btn_gray);
+            btnSmart.setTextColor(0xFF94A3B8);
+
+            btnFull.setBackgroundResource(R.drawable.btn_purple);
+            btnFull.setTextColor(0xFFFFFFFF);
+
+            btnOff.setBackgroundResource(R.drawable.btn_gray);
+            btnOff.setTextColor(0xFF94A3B8);
         } else {
-            badge.setText("ПРЯМОЕ");
+            badge.setText("⚪ ВЫКЛЮЧЕН");
             badge.setTextColor(0xFF94A3B8);
             badge.setBackgroundResource(R.drawable.badge_gray);
+            tvServer.setText("⚪ Прямое подключение без VPN\nСервер: " + dev.serverName);
 
-            btn.setText("ВКЛЮЧИТЬ VPN");
-            btn.setBackgroundResource(R.drawable.btn_green);
+            btnSmart.setBackgroundResource(R.drawable.btn_gray);
+            btnSmart.setTextColor(0xFF94A3B8);
+
+            btnFull.setBackgroundResource(R.drawable.btn_gray);
+            btnFull.setTextColor(0xFF94A3B8);
+
+            btnOff.setBackgroundResource(R.drawable.btn_red);
+            btnOff.setTextColor(0xFFFFFFFF);
         }
     }
 
@@ -206,7 +253,7 @@ public class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackgroundResource(R.drawable.card_bg);
-        card.setPadding(40, 40, 40, 40);
+        card.setPadding(35, 35, 35, 35);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         params.setMargins(0, 0, 0, 30);
@@ -219,76 +266,110 @@ public class MainActivity extends Activity {
         tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
         card.addView(tvTitle);
 
-        TextView tvServer = new TextView(this);
-        tvServer.setText("Сервер: " + dev.serverName + " • Статус: " + (dev.enabled ? "VPN ВКЛ" : "ПРЯМОЕ"));
-        tvServer.setTextColor(dev.enabled ? 0xFF10B981 : 0xFF94A3B8);
-        tvServer.setTextSize(12);
-        tvServer.setPadding(0, 8, 0, 16);
-        card.addView(tvServer);
+        String mode = dev.mode != null ? dev.mode : (dev.enabled ? "smart" : "off");
+        TextView tvSub = new TextView(this);
+        tvSub.setTextSize(12);
+        tvSub.setPadding(0, 6, 0, 14);
 
-        Button btn = new Button(this);
-        btn.setText(dev.enabled ? "ВЫКЛЮЧИТЬ VPN" : "ВКЛЮЧИТЬ VPN");
-        btn.setBackgroundResource(dev.enabled ? R.drawable.btn_red : R.drawable.btn_green);
-        btn.setTextColor(0xFFFFFFFF);
-        btn.setOnClickListener(v -> {
+        if ("smart".equals(mode)) {
+            tvSub.setText("🎯 Умный YouTube • Сервер: " + dev.serverName);
+            tvSub.setTextColor(0xFF10B981);
+        } else if ("full".equals(mode)) {
+            tvSub.setText("🛡️ Полный VPN • Сервер: " + dev.serverName);
+            tvSub.setTextColor(0xFFC084FC);
+        } else {
+            tvSub.setText("⚪ Выключен (прямое) • Сервер: " + dev.serverName);
+            tvSub.setTextColor(0xFF94A3B8);
+        }
+        card.addView(tvSub);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button bSmart = new Button(this);
+        bSmart.setText("🎯 Умный");
+        bSmart.setTextSize(11);
+        bSmart.setTypeface(null, android.graphics.Typeface.BOLD);
+        bSmart.setTextColor("smart".equals(mode) ? 0xFFFFFFFF : 0xFF94A3B8);
+        bSmart.setBackgroundResource("smart".equals(mode) ? R.drawable.btn_green : R.drawable.btn_gray);
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, 110, 1.2f);
+        lp1.setMargins(0, 0, 10, 0);
+        bSmart.setLayoutParams(lp1);
+        bSmart.setOnClickListener(v -> {
             vibrate();
-            toggleDevice(dev, !dev.enabled);
+            setDeviceMode(dev.id, "smart");
         });
-        card.addView(btn);
+        row.addView(bSmart);
 
+        Button bFull = new Button(this);
+        bFull.setText("🛡️ Полный");
+        bFull.setTextSize(11);
+        bFull.setTypeface(null, android.graphics.Typeface.BOLD);
+        bFull.setTextColor("full".equals(mode) ? 0xFFFFFFFF : 0xFF94A3B8);
+        bFull.setBackgroundResource("full".equals(mode) ? R.drawable.btn_purple : R.drawable.btn_gray);
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, 110, 1f);
+        lp2.setMargins(0, 0, 10, 0);
+        bFull.setLayoutParams(lp2);
+        bFull.setOnClickListener(v -> {
+            vibrate();
+            setDeviceMode(dev.id, "full");
+        });
+        row.addView(bFull);
+
+        Button bOff = new Button(this);
+        bOff.setText("⚪ Выкл");
+        bOff.setTextSize(11);
+        bOff.setTypeface(null, android.graphics.Typeface.BOLD);
+        bOff.setTextColor("off".equals(mode) ? 0xFFFFFFFF : 0xFF94A3B8);
+        bOff.setBackgroundResource("off".equals(mode) ? R.drawable.btn_red : R.drawable.btn_gray);
+        LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(0, 110, 0.8f);
+        bOff.setLayoutParams(lp3);
+        bOff.setOnClickListener(v -> {
+            vibrate();
+            setDeviceMode(dev.id, "off");
+        });
+        row.addView(bOff);
+
+        card.addView(row);
         containerOtherDevices.addView(card);
     }
 
-    private void toggleDevice(final ApiClient.DeviceInfo dev, final boolean enable) {
-        tvConnectionStatus.setText("Переключение " + dev.name + " -> " + (enable ? "VPN ВКЛ" : "ВЫКЛ") + "...");
+    private void setDeviceMode(final String deviceId, final String mode) {
+        String modeDesc = "smart".equals(mode) ? "Умный YouTube" : ("full".equals(mode) ? "Полный VPN" : "Выключение");
+        tvConnectionStatus.setText("Переключение " + deviceId + " -> " + modeDesc + "...");
         tvConnectionStatus.setTextColor(0xFF3B82F6);
 
         new AsyncTask<Void, Void, Boolean>() {
             @Override
             protected Boolean doInBackground(Void... voids) {
-                return ApiClient.toggleDevice(MainActivity.this, dev.id, enable);
+                return ApiClient.setDeviceMode(MainActivity.this, deviceId, mode);
             }
 
             @Override
             protected void onPostExecute(Boolean success) {
-                if (success) {
-                    dev.enabled = enable;
-                    loadStatus();
-                } else {
-                    Toast.makeText(MainActivity.this, "Ошибка переключения " + dev.name, Toast.LENGTH_SHORT).show();
-                    loadStatus();
+                if (!success) {
+                    Toast.makeText(MainActivity.this, "Ошибка переключения режима", Toast.LENGTH_SHORT).show();
                 }
-            }
-        }.execute();
-    }
-
-    private void toggleDeviceById(final String id, final boolean enable) {
-        new AsyncTask<Void, Void, Boolean>() {
-            @Override
-            protected Boolean doInBackground(Void... voids) {
-                return ApiClient.toggleDevice(MainActivity.this, id, enable);
-            }
-
-            @Override
-            protected void onPostExecute(Boolean success) {
                 loadStatus();
             }
         }.execute();
     }
 
-    private void toggleAllDevices(final boolean enable) {
-        tvConnectionStatus.setText("Переключение всех приставок -> " + (enable ? "VPN ВКЛ" : "ВЫКЛ") + "...");
+    private void toggleAllDevices(final String mode) {
+        boolean enable = !"off".equals(mode);
+        String modeDesc = "smart".equals(mode) ? "Умный YouTube" : ("full".equals(mode) ? "Полный VPN" : "Выключение");
+        tvConnectionStatus.setText("Переключение всех приставок -> " + modeDesc + "...");
         tvConnectionStatus.setTextColor(0xFF3B82F6);
 
         new AsyncTask<Void, Void, Boolean>() {
             @Override
             protected Boolean doInBackground(Void... voids) {
-                return ApiClient.toggleAll(MainActivity.this, enable);
+                return ApiClient.toggleAll(MainActivity.this, enable, mode);
             }
 
             @Override
             protected void onPostExecute(Boolean success) {
-                Toast.makeText(MainActivity.this, enable ? "VPN включен на всех приставках" : "VPN выключен на всех приставках", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "Режим (" + modeDesc + ") применен ко всем приставкам", Toast.LENGTH_SHORT).show();
                 loadStatus();
             }
         }.execute();
