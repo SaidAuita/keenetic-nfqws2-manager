@@ -22,6 +22,7 @@ scan_*.py
 fix_*.py
 add_*.py
 build_*.py
+!build_apk.py
 restore_*.py
 uninstall_*.py
 verify_clean.py
@@ -44,6 +45,9 @@ __pycache__/
 *.venv/
 env/
 venv/
+
+# Android build artifacts
+android_app/build/
 
 # Logs & temp files
 *.log

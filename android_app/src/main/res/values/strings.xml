@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Keenetic VPN Remote</string>
+    <string name="title_devices">Приставки в домашней сети</string>
+    <string name="subtitle">Управление VPN для YouTube и Smart TV</string>
+    <string name="status_vpn_on">VPN АКТИВЕН</string>
+    <string name="status_vpn_off">ПРЯМОЕ (БЕЗ VPN)</string>
+    <string name="btn_turn_on">ВКЛЮЧИТЬ VPN</string>
+    <string name="btn_turn_off">ВЫКЛЮЧИТЬ VPN</string>
+    <string name="btn_all_on">ВКЛЮЧИТЬ НА ВСЕХ</string>
+    <string name="btn_all_off">ВЫКЛЮЧИТЬ НА ВСЕХ</string>
+    <string name="btn_refresh">Обновить статус</string>
+    <string name="settings_title">Настройки подключения</string>
+    <string name="router_ip_label">IP роутера и порт:</string>
+    <string name="widget_name">Keenetic VPN Пульт</string>
+</resources>
