@@ -9,15 +9,15 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:padding="16dp">
 
-        <!-- HEADER -->
+        <!-- TOP BAR: APP TITLE & CONTROLS -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="20dp">
+            android:layout_marginBottom="16dp">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -38,7 +38,7 @@
                     android:id="@+id/tvSubtitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Пульт для Dune HD Smart TV"
+                    android:text="Пульт TV и менеджер VPN"
                     android:textColor="@color/text_muted"
                     android:textSize="13sp"
                     android:layout_marginTop="2dp" />
@@ -64,307 +64,424 @@
                 android:layout_marginStart="8dp" />
         </LinearLayout>
 
-        <!-- STATUS CONNECTION BANNER -->
-        <TextView
-            android:id="@+id/tvConnectionStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Подключение к роутеру 192.168.1.1:90..."
-            android:textColor="@color/accent_blue"
-            android:textSize="13sp"
-            android:padding="10dp"
-            android:background="@drawable/badge_gray"
-            android:layout_marginBottom="18dp" />
-
-        <!-- DEVICE 1 CARD: DUNE КУХНЯ -->
+        <!-- TAB SWITCHER: ПУЛЬТ TV / VPN СЕРВЕРЫ -->
         <LinearLayout
-            android:id="@+id/cardDuneKuh"
+            android:id="@+id/tabBar"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/card_bg"
-            android:padding="16dp"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:background="@drawable/tab_bar_bg"
+            android:padding="4dp"
             android:layout_marginBottom="16dp">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📺"
-                    android:textSize="24sp"
-                    android:layout_marginEnd="10dp" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvDuneKuhTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Dune HD (Кухня)"
-                        android:textColor="@color/text_main"
-                        android:textSize="17sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvDuneKuhIp"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="IP: 192.168.1.29"
-                        android:textColor="@color/text_muted"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/badgeDuneKuh"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="ВЫКЛ"
-                    android:textColor="@color/btn_off_text"
-                    android:background="@drawable/badge_gray"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="4dp"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvDuneKuhServer"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Сервер: VLESS Reality"
-                android:textColor="@color/text_muted"
-                android:textSize="12sp"
-                android:layout_marginBottom="12dp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnKuhSmart"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="1.2"
-                    android:text="🎯 Умный (YT)"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_main"
-                    android:background="@drawable/btn_gray"
-                    android:layout_marginEnd="6dp" />
-
-                <Button
-                    android:id="@+id/btnKuhFull"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="1"
-                    android:text="🛡️ Полный"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_main"
-                    android:background="@drawable/btn_gray"
-                    android:layout_marginEnd="6dp" />
-
-                <Button
-                    android:id="@+id/btnKuhOff"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="0.8"
-                    android:text="⚪ Выкл"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/btn_off_text"
-                    android:background="@drawable/btn_gray" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- DEVICE 2 CARD: DUNE КОМНАТА -->
-        <LinearLayout
-            android:id="@+id/cardDuneKomnata"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/card_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="20dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="8dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📺"
-                    android:textSize="24sp"
-                    android:layout_marginEnd="10dp" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvDuneKomnataTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Dune HD (Комната)"
-                        android:textColor="@color/text_main"
-                        android:textSize="17sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvDuneKomnataIp"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="IP: 192.168.1.53"
-                        android:textColor="@color/text_muted"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/badgeDuneKomnata"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="ВЫКЛ"
-                    android:textColor="@color/btn_off_text"
-                    android:background="@drawable/badge_gray"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="4dp"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvDuneKomnataServer"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Сервер: VLESS Reality"
-                android:textColor="@color/text_muted"
-                android:textSize="12sp"
-                android:layout_marginBottom="12dp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnKomnataSmart"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="1.2"
-                    android:text="🎯 Умный (YT)"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_main"
-                    android:background="@drawable/btn_gray"
-                    android:layout_marginEnd="6dp" />
-
-                <Button
-                    android:id="@+id/btnKomnataFull"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="1"
-                    android:text="🛡️ Полный"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_main"
-                    android:background="@drawable/btn_gray"
-                    android:layout_marginEnd="6dp" />
-
-                <Button
-                    android:id="@+id/btnKomnataOff"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="0.8"
-                    android:text="⚪ Выкл"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/btn_off_text"
-                    android:background="@drawable/btn_gray" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- DYNAMIC DEVICES CONTAINER (for other devices) -->
-        <LinearLayout
-            android:id="@+id/containerOtherDevices"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <!-- BATCH CONTROLS -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/card_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="20dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚡ Быстрые действия (все приставки)"
-                android:textColor="@color/text_main"
-                android:textSize="15sp"
+            <Button
+                android:id="@+id/btnTabRemote"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="📺 Пульт TV"
+                android:textSize="13sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="12dp" />
+                android:textColor="@color/text_main"
+                android:background="@drawable/btn_tab_active" />
 
+            <Button
+                android:id="@+id/btnTabServers"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="🌐 Серверы VPN"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_muted"
+                android:background="@drawable/btn_tab_inactive" />
+        </LinearLayout>
+
+        <!-- ========================================== -->
+        <!-- TAB 1: REMOTE CONTROLS (DUNE TV)          -->
+        <!-- ========================================== -->
+        <LinearLayout
+            android:id="@+id/layoutTabRemote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- STATUS CONNECTION BANNER -->
+            <TextView
+                android:id="@+id/tvConnectionStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Подключение к роутеру 192.168.1.1:90..."
+                android:textColor="@color/accent_blue"
+                android:textSize="13sp"
+                android:padding="10dp"
+                android:background="@drawable/badge_gray"
+                android:layout_marginBottom="16dp" />
+
+            <!-- DEVICE 1 CARD: DUNE КУХНЯ (192.168.1.29) -->
+            <LinearLayout
+                android:id="@+id/cardDuneKuh"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📺"
+                        android:textSize="24sp"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvDuneKuhTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Dune HD (Кухня)"
+                            android:textColor="@color/text_main"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvDuneKuhIp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="IP: 192.168.1.29"
+                            android:textColor="@color/text_muted"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/badgeDuneKuh"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ВЫКЛ"
+                        android:textColor="@color/btn_off_text"
+                        android:background="@drawable/badge_gray"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="4dp"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvDuneKuhServer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Сервер: VLESS Reality"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="12dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnKuhSmart"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1.2"
+                        android:text="🎯 Умный (YT)"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_main"
+                        android:background="@drawable/btn_gray"
+                        android:layout_marginEnd="6dp" />
+
+                    <Button
+                        android:id="@+id/btnKuhFull"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="🛡️ Полный"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_main"
+                        android:background="@drawable/btn_gray"
+                        android:layout_marginEnd="6dp" />
+
+                    <Button
+                        android:id="@+id/btnKuhOff"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="0.8"
+                        android:text="⚪ Выкл"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/btn_off_text"
+                        android:background="@drawable/btn_gray" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- DEVICE 2 CARD: DUNE КОМНАТА (192.168.1.53) -->
+            <LinearLayout
+                android:id="@+id/cardDuneKomnata"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📺"
+                        android:textSize="24sp"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvDuneKomnataTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Dune HD (Комната)"
+                            android:textColor="@color/text_main"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvDuneKomnataIp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="IP: 192.168.1.53"
+                            android:textColor="@color/text_muted"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/badgeDuneKomnata"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ВЫКЛ"
+                        android:textColor="@color/btn_off_text"
+                        android:background="@drawable/badge_gray"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="4dp"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvDuneKomnataServer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Сервер: VLESS Reality"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="12dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnKomnataSmart"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1.2"
+                        android:text="🎯 Умный (YT)"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_main"
+                        android:background="@drawable/btn_gray"
+                        android:layout_marginEnd="6dp" />
+
+                    <Button
+                        android:id="@+id/btnKomnataFull"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="🛡️ Полный"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_main"
+                        android:background="@drawable/btn_gray"
+                        android:layout_marginEnd="6dp" />
+
+                    <Button
+                        android:id="@+id/btnKomnataOff"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="0.8"
+                        android:text="⚪ Выкл"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/btn_off_text"
+                        android:background="@drawable/btn_gray" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- DYNAMIC DEVICES CONTAINER -->
+            <LinearLayout
+                android:id="@+id/containerOtherDevices"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- BATCH QUICK ACTIONS -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⚡ Быстрые действия (все приставки)"
+                    android:textColor="@color/text_main"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="12dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnAllSmart"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1.2"
+                        android:text="🎯 Умный везде"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_main"
+                        android:background="@drawable/btn_green"
+                        android:layout_marginEnd="6dp" />
+
+                    <Button
+                        android:id="@+id/btnAllFull"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="🛡️ Полный везде"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_main"
+                        android:background="@drawable/btn_purple"
+                        android:layout_marginEnd="6dp" />
+
+                    <Button
+                        android:id="@+id/btnAllOff"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="0.8"
+                        android:text="⚪ Выкл"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/btn_off_text"
+                        android:background="@drawable/btn_gray" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ========================================== -->
+        <!-- TAB 2: VPN SERVERS & SUBSCRIPTIONS (HAPP)  -->
+        <!-- ========================================== -->
+        <LinearLayout
+            android:id="@+id/layoutTabServers"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- SERVERS ACTION BANNER -->
+            <TextView
+                android:id="@+id/tvServersBanner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Управление подключенными VPN туннелями"
+                android:textColor="@color/text_muted"
+                android:textSize="13sp"
+                android:padding="10dp"
+                android:background="@drawable/badge_gray"
+                android:layout_marginBottom="14dp" />
+
+            <!-- ACTION BUTTONS (TEST ALL / REFRESH SUBS / ADD SUB) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="16dp">
 
                 <Button
-                    android:id="@+id/btnAllSmart"
+                    android:id="@+id/btnPingAll"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1.1"
+                    android:text="⚡ Тест пинга"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_main"
+                    android:background="@drawable/btn_blue"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnRefreshSubs"
                     android:layout_width="0dp"
                     android:layout_height="44dp"
                     android:layout_weight="1.2"
-                    android:text="🎯 Умный везде"
-                    android:textSize="11sp"
+                    android:text="🔄 Обновить"
+                    android:textSize="12sp"
                     android:textStyle="bold"
                     android:textColor="@color/text_main"
-                    android:background="@drawable/btn_green"
+                    android:background="@drawable/btn_gray"
                     android:layout_marginEnd="6dp" />
 
                 <Button
-                    android:id="@+id/btnAllFull"
+                    android:id="@+id/btnAddSub"
                     android:layout_width="0dp"
                     android:layout_height="44dp"
-                    android:layout_weight="1"
-                    android:text="🛡️ Полный везде"
+                    android:layout_weight="0.9"
+                    android:text="➕ Подписка"
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:textColor="@color/text_main"
-                    android:background="@drawable/btn_purple"
-                    android:layout_marginEnd="6dp" />
-
-                <Button
-                    android:id="@+id/btnAllOff"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="0.8"
-                    android:text="⚪ Выкл"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/btn_off_text"
                     android:background="@drawable/btn_gray" />
             </LinearLayout>
+
+            <!-- SERVERS LIST CONTAINER (Populated dynamically) -->
+            <LinearLayout
+                android:id="@+id/containerServers"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
         </LinearLayout>
 
         <!-- FOOTER INFO -->
@@ -375,7 +492,7 @@
             android:textColor="@color/text_muted"
             android:textSize="12sp"
             android:gravity="center"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="8dp"
             android:layout_marginBottom="16dp" />
 
     </LinearLayout>

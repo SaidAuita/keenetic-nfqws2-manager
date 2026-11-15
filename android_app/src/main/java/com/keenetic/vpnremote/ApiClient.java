@@ -13,7 +13,10 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 public class ApiClient {
     public static final String PREFS_NAME = "keenetic_vpn_prefs";
@@ -25,16 +28,18 @@ public class ApiClient {
         public String name;
         public String ip;
         public String icon;
+        public String serverId;
         public String serverName;
         public String mode; // "smart", "full", "off"
         public boolean enabled;
         public boolean iptablesActive;
 
-        public DeviceInfo(String id, String name, String ip, String icon, String serverName, String mode, boolean enabled) {
+        public DeviceInfo(String id, String name, String ip, String icon, String serverId, String serverName, String mode, boolean enabled) {
             this.id = id;
             this.name = name;
             this.ip = ip;
             this.icon = icon != null && !icon.isEmpty() ? icon : "📺";
+            this.serverId = serverId != null ? serverId : "";
             this.serverName = serverName != null ? serverName : "VLESS Reality";
             this.mode = mode != null ? mode : (enabled ? "smart" : "off");
             this.enabled = !"off".equals(this.mode);
@@ -42,10 +47,33 @@ public class ApiClient {
         }
     }
 
+    public static class ServerInfo {
+        public String id;
+        public String name;
+        public String group;
+        public String protocol;
+        public String transport;
+        public String security;
+        public String address;
+        public int port;
+        public String subUrl;
+        public int ping = -2; // -2: not tested, -1: timeout, >=0: ms
+        public String testStatus = "";
+    }
+
+    public static class TestResult {
+        public boolean success;
+        public String httpCode = "";
+        public int latency = 0;
+        public String message = "";
+        public String error = "";
+    }
+
     public static class StatusResult {
         public boolean success;
         public boolean xrayRunning;
         public List<DeviceInfo> devices = new ArrayList<>();
+        public List<ServerInfo> servers = new ArrayList<>();
         public String errorMessage;
     }
 
@@ -76,8 +104,8 @@ public class ApiClient {
         URL url = new URL(urlStr);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
-        conn.setConnectTimeout(4000);
-        conn.setReadTimeout(5000);
+        conn.setConnectTimeout(6000);
+        conn.setReadTimeout(12000);
         conn.setDoOutput(true);
         conn.setDoInput(true);
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
@@ -121,6 +149,7 @@ public class ApiClient {
                             d.optString("name"),
                             d.optString("ip"),
                             d.optString("icon", "📺"),
+                            d.optString("server", ""),
                             d.optString("server_name", "VLESS Reality"),
                             mode,
                             enabled
@@ -129,11 +158,104 @@ public class ApiClient {
                     res.devices.add(dev);
                 }
             }
+
+            JSONArray srvArr = obj.optJSONArray("servers");
+            if (srvArr != null) {
+                for (int i = 0; i < srvArr.length(); i++) {
+                    JSONObject s = srvArr.getJSONObject(i);
+                    ServerInfo srv = new ServerInfo();
+                    srv.id = s.optString("id");
+                    srv.name = s.optString("name");
+                    srv.group = s.optString("group", "VPN");
+                    srv.protocol = s.optString("protocol", "vless");
+                    srv.transport = s.optString("transport", "tcp");
+                    srv.security = s.optString("security", "none");
+                    srv.address = s.optString("address", "");
+                    srv.port = s.optInt("port", 443);
+                    srv.subUrl = s.optString("sub_url", "");
+                    res.servers.add(srv);
+                }
+            }
         } catch (Exception e) {
             res.success = false;
             res.errorMessage = e.getMessage();
         }
         return res;
+    }
+
+    public static Map<String, Integer> pingAllServers(Context context) {
+        Map<String, Integer> map = new HashMap<>();
+        try {
+            String jsonStr = post(context, "action=ping_all_servers");
+            JSONObject obj = new JSONObject(jsonStr);
+            if (obj.optBoolean("success", false)) {
+                JSONObject pingObj = obj.optJSONObject("ping");
+                if (pingObj != null) {
+                    Iterator<String> keys = pingObj.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        map.put(key, pingObj.optInt(key, -1));
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return map;
+    }
+
+    public static TestResult testVpnServer(Context context, String serverId) {
+        TestResult res = new TestResult();
+        try {
+            String postData = "action=test_vpn_server&id=" + URLEncoder.encode(serverId, "UTF-8");
+            String jsonStr = post(context, postData);
+            JSONObject obj = new JSONObject(jsonStr);
+            res.success = obj.optBoolean("success", false);
+            res.httpCode = obj.optString("http_code", "");
+            res.latency = obj.optInt("latency", 0);
+            res.message = obj.optString("message", "");
+            res.error = obj.optString("error", "");
+        } catch (Exception e) {
+            res.success = false;
+            res.error = e.getMessage();
+        }
+        return res;
+    }
+
+    public static String refreshAllSubscriptions(Context context) {
+        try {
+            String jsonStr = post(context, "action=refresh_all_subscriptions");
+            JSONObject obj = new JSONObject(jsonStr);
+            if (obj.optBoolean("success", false)) {
+                return obj.optString("message", "Подписки успешно обновлены!");
+            } else {
+                return "Ошибка: " + obj.optString("error", "Сбой обновления");
+            }
+        } catch (Exception e) {
+            return "Ошибка: " + e.getMessage();
+        }
+    }
+
+    public static boolean importSubscription(Context context, String url, String group) {
+        try {
+            String postData = "action=import_subscription&url=" + URLEncoder.encode(url, "UTF-8")
+                    + (group != null && !group.isEmpty() ? "&group=" + URLEncoder.encode(group, "UTF-8") : "");
+            String jsonStr = post(context, postData);
+            JSONObject obj = new JSONObject(jsonStr);
+            return obj.optBoolean("success", false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean assignServer(Context context, String serverId, String target) {
+        try {
+            String postData = "action=assign_server_to_devices&server_id=" + URLEncoder.encode(serverId, "UTF-8")
+                    + "&target=" + URLEncoder.encode(target, "UTF-8");
+            String jsonStr = post(context, postData);
+            JSONObject obj = new JSONObject(jsonStr);
+            return obj.optBoolean("success", false);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static boolean setDeviceMode(Context context, String deviceId, String mode) {

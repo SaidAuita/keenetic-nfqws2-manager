@@ -872,6 +872,272 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         exit;
     }
 
+    if ($action === 'ping_all_servers') {
+        $servers = loadVpnServers();
+        $sockets = [];
+        $times = [];
+        $results = [];
+
+        foreach ($servers as $s) {
+            $sid = $s['id'];
+            $addr = $s['address'] ?? '';
+            $port = (int)($s['port'] ?? 443);
+            if (!$addr || !$port) continue;
+            $remote = "tcp://" . $addr . ":" . $port;
+            $sock = @stream_socket_client($remote, $errno, $errstr, 2.0, STREAM_CLIENT_ASYNC_CONNECT);
+            if ($sock) {
+                stream_set_blocking($sock, false);
+                $sockets[$sid] = $sock;
+                $times[$sid] = microtime(true);
+            } else {
+                $results[$sid] = -1;
+            }
+        }
+
+        $read = [];
+        $write = $sockets;
+        while (!empty($write)) {
+            $w = $write;
+            $r = null;
+            $e = null;
+            $num = @stream_select($r, $w, $e, 1, 500000);
+            if ($num === false || $num === 0) break;
+            foreach ($w as $sock) {
+                $sid = array_search($sock, $sockets, true);
+                if ($sid !== false) {
+                    $lat = round((microtime(true) - $times[$sid]) * 1000);
+                    $results[$sid] = $lat;
+                    unset($write[$sid]);
+                    @fclose($sock);
+                }
+            }
+        }
+
+        foreach ($write as $sid => $sock) {
+            $results[$sid] = -1;
+            @fclose($sock);
+        }
+
+        echo json_encode(['success' => true, 'ping' => $results]);
+        exit;
+    }
+
+    if ($action === 'test_vpn_server') {
+        $id = trim($_REQUEST['id'] ?? '');
+        $servers = loadVpnServers();
+        $targetServer = null;
+        foreach ($servers as $s) {
+            if ($s['id'] === $id) {
+                $targetServer = $s;
+                break;
+            }
+        }
+
+        if (!$targetServer) {
+            echo json_encode(['success' => false, 'error' => 'Сервер не найден']);
+            exit;
+        }
+
+        // Build temporary test outbound
+        $transport = $targetServer['transport'] ?? 'tcp';
+        $security = $targetServer['security'] ?? 'reality';
+        $outbound = [
+            "tag" => "proxy",
+            "protocol" => $targetServer['protocol'] ?? 'vless',
+            "settings" => [
+                "vnext" => [[
+                    "address" => $targetServer['address'],
+                    "port" => (int)$targetServer['port'],
+                    "users" => [["id" => $targetServer['uuid'] ?? '', "encryption" => "none"]]
+                ]]
+            ],
+            "streamSettings" => [
+                "network" => $transport,
+                "security" => $security
+            ]
+        ];
+
+        if ($security === 'reality') {
+            $outbound["streamSettings"]["realitySettings"] = [
+                "fingerprint" => $targetServer["fingerprint"] ?? "chrome",
+                "serverName" => $targetServer["sni"] ?? "",
+                "publicKey" => $targetServer["pbk"] ?? "",
+                "shortId" => $targetServer["sid"] ?? "",
+                "spiderX" => $targetServer["spiderX"] ?? "/"
+            ];
+        } elseif ($security === 'tls') {
+            $outbound["streamSettings"]["tlsSettings"] = [
+                "serverName" => $targetServer["sni"] ?? "",
+                "allowInsecure" => false
+            ];
+        }
+
+        if ($transport === 'grpc') {
+            $outbound["streamSettings"]["grpcSettings"] = [
+                "serviceName" => $targetServer["serviceName"] ?? "apple"
+            ];
+        } elseif ($transport === 'ws') {
+            $ws = ["path" => $targetServer["path"] ?? "/"];
+            if (!empty($targetServer["sni"])) {
+                $ws["headers"] = ["Host" => $targetServer["sni"]];
+            }
+            $outbound["streamSettings"]["wsSettings"] = $ws;
+        }
+
+        $testPort = 1089;
+        $testCfg = [
+            "log" => ["loglevel" => "warning"],
+            "inbounds" => [["tag" => "socks", "port" => $testPort, "listen" => "127.0.0.1", "protocol" => "socks"]],
+            "outbounds" => [$outbound]
+        ];
+
+        $tmpFile = "/tmp/xray_test_" . getmypid() . ".json";
+        file_put_contents($tmpFile, json_encode($testCfg));
+
+        // Start temporary xray
+        exec("killall xray_test 2>/dev/null");
+        $xrayBin = file_exists('/opt/sbin/xray') ? '/opt/sbin/xray' : '/opt/bin/xray';
+        exec("cp $xrayBin /tmp/xray_test && /tmp/xray_test run -c $tmpFile >/dev/null 2>&1 &");
+        usleep(1200000); // 1.2s to initialize
+
+        // Test curl to YouTube and Google
+        $t1 = microtime(true);
+        $chk = shell_exec("curl -x socks5h://127.0.0.1:$testPort -s -o /dev/null -w '%{http_code}' https://www.youtube.com --max-time 4 2>/dev/null");
+        $chkCode = trim($chk ?: '');
+        $latencyMs = round((microtime(true) - $t1) * 1000);
+
+        // Cleanup
+        exec("killall -9 xray_test 2>/dev/null; rm -f /tmp/xray_test $tmpFile");
+
+        if (in_array($chkCode, ['200', '301', '302', '403', '404'])) {
+            echo json_encode([
+                'success' => true,
+                'http_code' => $chkCode,
+                'latency' => $latencyMs,
+                'message' => "Туннель работает (HTTP {$chkCode}, {$latencyMs} мс)"
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'http_code' => $chkCode ?: 0,
+                'error' => 'Сбой туннеля (сервер не отвечает или сброшен провайдером)'
+            ]);
+        }
+        exit;
+    }
+
+    if ($action === 'refresh_all_subscriptions') {
+        $servers = loadVpnServers();
+        $subUrls = [];
+        foreach ($servers as $s) {
+            $url = $s['sub_url'] ?? '';
+            $group = $s['group'] ?? 'VPN';
+            if ($url && !isset($subUrls[$url])) {
+                $subUrls[$url] = $group;
+            }
+        }
+
+        if (empty($subUrls)) {
+            echo json_encode(['success' => false, 'error' => 'Нет сохраненных URL подписок для обновления']);
+            exit;
+        }
+
+        $allUpdated = [];
+        $messages = [];
+        $updatedGroups = [];
+
+        foreach ($subUrls as $subUrl => $group) {
+            $cmd = "curl -4 -s -L -k --connect-timeout 8 --max-time 15 -H 'User-Agent: Happ/4.2.1' " . escapeshellarg($subUrl);
+            $raw = shell_exec($cmd);
+            if (!$raw) continue;
+            $raw = trim($raw);
+            $decoded = @base64_decode($raw);
+            $content = ($decoded && str_contains($decoded, '://')) ? $decoded : $raw;
+
+            $lines = explode("\n", str_replace("\r", "", $content));
+            $groupServers = [];
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if (str_starts_with($line, 'vless://')) {
+                    $srv = parseVlessString($line, $group);
+                    if ($srv) {
+                        $srv['sub_url'] = $subUrl;
+                        $groupServers[] = $srv;
+                    }
+                }
+            }
+            if (!empty($groupServers)) {
+                $allUpdated = array_merge($allUpdated, $groupServers);
+                $updatedGroups[] = $group;
+                $messages[] = "{$group}: " . count($groupServers) . " серв.";
+            }
+        }
+
+        if (!empty($allUpdated)) {
+            $kept = [];
+            foreach ($servers as $s) {
+                if (!in_array($s['group'] ?? '', $updatedGroups)) {
+                    $kept[] = $s;
+                }
+            }
+            $merged = array_merge($allUpdated, $kept);
+            saveVpnServers($merged);
+            $devices = loadVpnDevices();
+            syncVpnRouting($devices, $merged);
+
+            echo json_encode([
+                'success' => true,
+                'count' => count($allUpdated),
+                'groups' => $updatedGroups,
+                'servers' => $merged,
+                'message' => "Обновлено: " . implode(', ', $messages)
+            ]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Не удалось обновить подписки по сохраненным ссылкам']);
+        }
+        exit;
+    }
+
+    if ($action === 'assign_server_to_devices') {
+        $serverId = trim($_POST['server_id'] ?? '');
+        $target = trim($_POST['target'] ?? 'all'); // 'all', 'kuh', 'komnata'
+
+        $devices = loadVpnDevices();
+        $servers = loadVpnServers();
+
+        $srvFound = false;
+        foreach ($servers as $s) {
+            if ($s['id'] === $serverId) {
+                $srvFound = true;
+                break;
+            }
+        }
+
+        if (!$srvFound) {
+            echo json_encode(['success' => false, 'error' => 'Сервер не найден']);
+            exit;
+        }
+
+        foreach ($devices as &$d) {
+            if ($target === 'all') {
+                $d['server'] = $serverId;
+            } elseif ($target === 'kuh' && ($d['id'] === 'dune_kuh' || $d['ip'] === '192.168.1.29')) {
+                $d['server'] = $serverId;
+            } elseif ($target === 'komnata' && ($d['id'] === 'dune_komnata' || $d['ip'] === '192.168.1.53')) {
+                $d['server'] = $serverId;
+            } elseif ($d['id'] === $target) {
+                $d['server'] = $serverId;
+            }
+        }
+        unset($d);
+
+        saveVpnDevices($devices);
+        syncVpnRouting($devices, $servers);
+
+        echo json_encode(['success' => true, 'server_id' => $serverId, 'target' => $target, 'devices' => $devices]);
+        exit;
+    }
+
     if ($action === 'import_subscription') {
         $url = trim($_POST['url'] ?? '');
         $customGroup = trim($_POST['group'] ?? '');
