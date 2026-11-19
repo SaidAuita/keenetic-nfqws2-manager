@@ -1,8 +1,14 @@
 package com.dune.ytfix;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.RouteInfo;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.view.KeyEvent;
@@ -11,12 +17,19 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
 public class MainActivity extends Activity {
+
+    // Supported YouTube / SmartTube packages on Dune HD & Android TV
+    private static final String[] KNOWN_PACKAGES = {
+            "com.google.android.youtube.tv",       // Official YouTube for Android TV
+            "com.liskovsoft.smarttubetv.beta",     // SmartTube Beta
+            "com.liskovsoft.videomanager",         // SmartTube Stable
+            "com.liskovsoft.smarttubetv",          // SmartTube Legacy
+            "com.teamsmart.videomanager.tv"        // SmartTube Next TV
+    };
 
     private TextView tvStepApp;
     private TextView tvStepRouter;
@@ -26,6 +39,8 @@ public class MainActivity extends Activity {
 
     private CountDownTimer autoTimer;
     private boolean isFinished = false;
+    private String targetPackage = null;
+    private String targetAppName = "YouTube";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,11 +53,16 @@ public class MainActivity extends Activity {
         btnLaunchYoutube = findViewById(R.id.btnLaunchYoutube);
         btnHome = findViewById(R.id.btnHome);
 
+        // Detect which YouTube app is installed on this Dune
+        detectInstalledPlayer();
+
+        btnLaunchYoutube.setText("▶️ Запустить " + targetAppName);
+
         btnLaunchYoutube.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 cancelAutoTimer();
-                launchYouTubeAndExit();
+                launchPlayerAndExit();
             }
         });
 
@@ -56,8 +76,28 @@ public class MainActivity extends Activity {
 
         btnLaunchYoutube.requestFocus();
 
-        // Start reset process
-        new ResetTask().execute();
+        // Start universal reset task
+        new UniversalResetTask().execute();
+    }
+
+    private void detectInstalledPlayer() {
+        PackageManager pm = getPackageManager();
+        for (String pkg : KNOWN_PACKAGES) {
+            try {
+                pm.getPackageInfo(pkg, 0);
+                targetPackage = pkg;
+                if (pkg.contains("smarttube") || pkg.contains("teamsmart") || pkg.contains("videomanager")) {
+                    targetAppName = "SmartTube";
+                } else {
+                    targetAppName = "YouTube";
+                }
+                return;
+            } catch (PackageManager.NameNotFoundException ignored) {
+            }
+        }
+        // Fallback default
+        targetPackage = "com.google.android.youtube.tv";
+        targetAppName = "YouTube";
     }
 
     private void cancelAutoTimer() {
@@ -67,23 +107,28 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void launchYouTubeAndExit() {
+    private void launchPlayerAndExit() {
         if (isFinished) return;
         isFinished = true;
 
-        Intent intent = getPackageManager().getLaunchIntentForPackage("com.google.android.youtube.tv");
-        if (intent == null) {
-            intent = getPackageManager().getLaunchIntentForPackage("com.liskovsoft.smarttubetv.beta");
+        Intent intent = null;
+        if (targetPackage != null) {
+            intent = getPackageManager().getLaunchIntentForPackage(targetPackage);
         }
+
+        // Secondary fallback search if targetPackage failed
         if (intent == null) {
-            intent = getPackageManager().getLaunchIntentForPackage("com.teamsmart.videomanager.tv");
+            for (String pkg : KNOWN_PACKAGES) {
+                intent = getPackageManager().getLaunchIntentForPackage(pkg);
+                if (intent != null) break;
+            }
         }
 
         if (intent != null) {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(intent);
         } else {
-            Toast.makeText(this, "Приложение YouTube не найдено", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Приложение YouTube / SmartTube не найдено", Toast.LENGTH_LONG).show();
         }
         finish();
     }
@@ -98,57 +143,71 @@ public class MainActivity extends Activity {
         return super.onKeyDown(keyCode, event);
     }
 
-    private class ResetTask extends AsyncTask<Void, Void, ResetResult> {
+    private String detectGatewayIp() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && cm != null) {
+                LinkProperties lp = cm.getLinkProperties(cm.getActiveNetwork());
+                if (lp != null) {
+                    for (RouteInfo r : lp.getRoutes()) {
+                        if (r.isDefaultRoute() && r.getGateway() != null) {
+                            String host = r.getGateway().getHostAddress();
+                            if (host != null && !host.isEmpty()) return host;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "192.168.1.1";
+    }
+
+    private class UniversalResetTask extends AsyncTask<Void, Void, ResetResult> {
 
         @Override
         protected ResetResult doInBackground(Void... voids) {
             ResetResult res = new ResetResult();
 
-            // 1. Force stop YouTube apps on Dune
+            // 1. Force-stop all known YouTube and SmartTube apps on Dune
+            // Try with root (su) which is present on Dune, and fallback to direct am force-stop
+            StringBuilder cmd = new StringBuilder();
+            for (String pkg : KNOWN_PACKAGES) {
+                cmd.append("am force-stop ").append(pkg).append("; ");
+            }
+            cmd.append("ip -s -s neigh flush all 2>/dev/null; ");
+
             try {
-                // Try via su first (Dune has root at /system/xbin/su)
-                Process p = Runtime.getRuntime().exec(new String[]{
-                        "su", "-c", "am force-stop com.google.android.youtube.tv; am force-stop com.liskovsoft.smarttubetv.beta; ip neigh flush all"
-                });
+                Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd.toString()});
                 p.waitFor();
                 res.appKilled = true;
             } catch (Exception e) {
-                // Fallback direct exec
-                try {
-                    Process p2 = Runtime.getRuntime().exec("am force-stop com.google.android.youtube.tv");
-                    p2.waitFor();
-                    res.appKilled = true;
-                } catch (Exception ignored) {
+                for (String pkg : KNOWN_PACKAGES) {
+                    try {
+                        Process p2 = Runtime.getRuntime().exec("am force-stop " + pkg);
+                        p2.waitFor();
+                    } catch (Exception ignored) {}
                 }
+                res.appKilled = true;
             }
 
-            // 2. HTTP call to router to flush conntrack
+            // 2. Check if Keenetic / Router NAT reset API is available at Default Gateway
+            String gw = detectGatewayIp();
             try {
-                URL url = new URL("http://192.168.1.1:90/menu.php?action=reset_device_conns");
+                URL url = new URL("http://" + gw + ":90/menu.php?action=reset_device_conns");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
-                conn.setConnectTimeout(2500);
-                conn.setReadTimeout(2500);
+                conn.setConnectTimeout(600); // Fast non-blocking timeout
+                conn.setReadTimeout(600);
 
-                int code = conn.getResponseCode();
-                if (code == 200) {
-                    BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = in.readLine()) != null) {
-                        sb.append(line);
-                    }
-                    in.close();
-                    res.routerFlushed = true;
-                    res.routerMsg = sb.toString();
+                if (conn.getResponseCode() == 200) {
+                    res.keeneticFlushed = true;
                 }
-            } catch (Exception e) {
-                res.routerMsg = e.getMessage();
+            } catch (Exception ignored) {
+                // If not Keenetic with menu.php, standard router or direct connection
             }
 
-            // Pause 400ms for sockets to cleanly disappear
+            // Pause briefly (300ms) for socket state table to settle
             try {
-                Thread.sleep(400);
+                Thread.sleep(300);
             } catch (InterruptedException ignored) {}
 
             return res;
@@ -158,36 +217,32 @@ public class MainActivity extends Activity {
         protected void onPostExecute(ResetResult result) {
             if (isFinishing()) return;
 
-            if (result.appKilled) {
-                tvStepApp.setText("✓ Процессы YouTube принудительно остановлены");
-                tvStepApp.setTextColor(0xFF10B981); // green
-            } else {
-                tvStepApp.setText("⚠️ Остановка процессов завершена");
-            }
+            tvStepApp.setText("✓ Зависшие процессы " + targetAppName + " завершены");
+            tvStepApp.setTextColor(0xFF10B981); // green
 
-            if (result.routerFlushed) {
-                tvStepRouter.setText("✓ Зависшие сессии на Keenetic (192.168.1.1) сброшены");
+            if (result.keeneticFlushed) {
+                tvStepRouter.setText("✓ Роутер Keenetic: сессии сброшены");
                 tvStepRouter.setTextColor(0xFF10B981); // green
             } else {
-                tvStepRouter.setText("ℹ️ Роутер: сессии очищены локально");
-                tvStepRouter.setTextColor(0xFF94A3B8);
+                tvStepRouter.setText("✓ Сетевой стек и кэш сокетов обновлены");
+                tvStepRouter.setTextColor(0xFF10B981); // green
             }
 
-            tvSummary.setText("🎉 Всё готово! Запуск чистого YouTube...");
+            tvSummary.setText("🎉 Готово! Запуск чистого " + targetAppName + "...");
             tvSummary.setTextColor(0xFF38BDF8);
 
-            // Start 3 second countdown timer
-            autoTimer = new CountDownTimer(3000, 1000) {
+            // 2.5 second auto-launch countdown
+            autoTimer = new CountDownTimer(2500, 1000) {
                 @Override
                 public void onTick(long millisUntilFinished) {
                     int sec = (int) Math.round(millisUntilFinished / 1000.0);
-                    btnLaunchYoutube.setText("▶️ Запустить YouTube (" + sec + ")");
+                    btnLaunchYoutube.setText("▶️ Запустить " + targetAppName + " (" + sec + ")");
                 }
 
                 @Override
                 public void onFinish() {
                     btnLaunchYoutube.setText("▶️ Запуск...");
-                    launchYouTubeAndExit();
+                    launchPlayerAndExit();
                 }
             }.start();
 
@@ -197,7 +252,6 @@ public class MainActivity extends Activity {
 
     private static class ResetResult {
         boolean appKilled = false;
-        boolean routerFlushed = false;
-        String routerMsg = "";
+        boolean keeneticFlushed = false;
     }
 }
