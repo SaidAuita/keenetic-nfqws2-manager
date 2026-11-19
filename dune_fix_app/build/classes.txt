@@ -1,12 +1,13 @@
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity$1.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity$2.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity$ResetResult.class
-C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity$ResetTask$1.class
-C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity$ResetTask.class
+C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity$UniversalResetTask$1.class
+C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity$UniversalResetTask.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/MainActivity.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/R$color.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/R$drawable.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/R$id.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/R$layout.class
+C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/R$mipmap.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/R$string.class
 C:/_CODE/Utilites/keenetic/dune_fix_app/build/classes/com/dune/ytfix/R.class
