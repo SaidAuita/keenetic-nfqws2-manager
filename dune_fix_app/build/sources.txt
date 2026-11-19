@@ -1,0 +1,2 @@
+C:/_CODE/Utilites/keenetic/dune_fix_app/src/main/java/com/dune/ytfix/MainActivity.java
+C:/_CODE/Utilites/keenetic/dune_fix_app/build/gen/com/dune/ytfix/R.java

@@ -1152,6 +1152,55 @@ if ((isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' 
         exit;
     }
 
+    if ($action === 'reset_device_conns') {
+        $ip = trim($_REQUEST['ip'] ?? '');
+        $target = trim($_REQUEST['target'] ?? '');
+
+        $devices = loadVpnDevices();
+        $ipsToReset = [];
+
+        if ($target === 'all') {
+            foreach ($devices as $d) {
+                if (!empty($d['ip'])) $ipsToReset[] = $d['ip'];
+            }
+        } elseif ($target === 'kuh') {
+            foreach ($devices as $d) {
+                if (str_contains($d['id'] ?? '', 'kuh') || ($d['ip'] ?? '') === '192.168.1.29' || ($d['ip'] ?? '') === '192.168.1.145') {
+                    if (!empty($d['ip'])) $ipsToReset[] = $d['ip'];
+                }
+            }
+        } elseif ($target === 'komnata') {
+            foreach ($devices as $d) {
+                if (str_contains($d['id'] ?? '', 'komnata') || ($d['ip'] ?? '') === '192.168.1.53') {
+                    if (!empty($d['ip'])) $ipsToReset[] = $d['ip'];
+                }
+            }
+        } elseif ($ip) {
+            $ipsToReset[] = $ip;
+        } else {
+            $callerIp = $_SERVER['REMOTE_ADDR'] ?? '';
+            if ($callerIp && preg_match('/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/', $callerIp)) {
+                $ipsToReset[] = $callerIp;
+            }
+        }
+
+        $flushed = [];
+        foreach (array_unique($ipsToReset) as $targetIp) {
+            if (preg_match('/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/', $targetIp)) {
+                exec("conntrack -D -s " . escapeshellarg($targetIp) . " 2>/dev/null");
+                exec("conntrack -D -d " . escapeshellarg($targetIp) . " 2>/dev/null");
+                $flushed[] = $targetIp;
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'flushed' => $flushed,
+            'message' => 'Сброшены соединения для: ' . implode(', ', $flushed)
+        ]);
+        exit;
+    }
+
     if ($action === 'import_subscription') {
         $url = trim($_POST['url'] ?? '');
         $customGroup = trim($_POST['group'] ?? '');

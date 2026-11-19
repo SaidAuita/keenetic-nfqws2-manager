@@ -23,6 +23,7 @@ fix_*.py
 add_*.py
 build_*.py
 !build_apk.py
+!build_dune_fix_apk.py
 restore_*.py
 uninstall_*.py
 verify_clean.py
